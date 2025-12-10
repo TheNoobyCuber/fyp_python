@@ -1,0 +1,25 @@
+# Core Flask
+flask==2.3.3
+flask-sqlalchemy==3.0.5
+flask-login==0.6.2
+flask-wtf==1.1.1
+
+# Database driver (choose one)
+pymysql==1.0.3      # For MySQL
+# psycopg2-binary==2.9.7  # For PostgreSQL
+# sqlite3               # Built-in for SQLite
+
+# Security
+cryptography==41.0.4
+bcrypt==4.0.1
+
+# File processing
+python-magic==0.4.27
+PyPDF2==3.0.1
+
+# Pattern matching
+regex==2023.6.3
+
+# Optional but recommended
+flask-migrate==4.0.4  # Database migrations
+flask-mail==0.9.1     # Email alerts
