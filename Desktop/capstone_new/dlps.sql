@@ -2,14 +2,14 @@ drop database IF EXISTS DLPS;
 create database DLPS;
 USE DLPS;
 
-CREATE TABLE `UserData` (
-    `ID` INT PRIMARY KEY AUTO_INCREMENT,
-    `firstname` VARCHAR(255) NOT NULL,
-    `lastname` VARCHAR(255) NOT NULL,
-    `email` VARCHAR(50) NOT NULL UNIQUE,
-    `password` VARCHAR(255) NOT NULL,
-    `position` VARCHAR(50) NOT NULL,
-    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+CREATE TABLE User (
+    ID INT PRIMARY KEY AUTO_INCREMENT,
+    fullname VARCHAR(255) NOT NULL,
+    username VARCHAR(255) NOT NULL,
+    email VARCHAR(50) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    position VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE File (
@@ -24,5 +24,5 @@ CREATE TABLE File (
     iv BLOB NOT NULL,             -- 16-byte initialization vector
     file_size BIGINT NOT NULL,    -- Original file size in bytes
     uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES User(user_id) ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES User(ID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

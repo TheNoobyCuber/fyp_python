@@ -1,11 +1,21 @@
-from extensions import db
+from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+
+db = SQLAlchemy()
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    fullname = db.Column(db.String(150), nullable=False)
     username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(200))
     is_admin = db.Column(db.Boolean, default=False)
+
+    # def set_password(self, password):
+    #     self.password = generate_password_hash(password)
+    
+    # def check_password(self, password):
+    #     return check_password_hash(self.password, password)
 
 class DlpPolicy(db.Model):
     id = db.Column(db.Integer, primary_key=True)
