@@ -11,32 +11,105 @@
     <!-- Bootstrap JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script></head>
 <body>
-    <div class="login-container">
-        <div class="login-header">
-            <h2><i class="fas fa-lock me-2"></i>Welcome Back</h2>
-            <p class="mb-0 mt-2">What do you want to do today?</p>
-            <div class="btn-group" role="group" aria-label="Basic example">
-                <button type="button" class="btn btn-secondary"><a href="viewNewFiles.html">View new files</a></button> <br>
-                <button type="button" class="btn btn-secondary"><a href="viewAllFiles.html">View all files</a></button> <br>
-                <button type="button" class="btn btn-secondary"><a href="uploadFile.php">Upload a file</a></button>
+    <div class="card shadow">
+        <div class="card-header bg-info text-white">
+            <h3 class="mb-0"><i class="bi bi-person-circle me-2"></i>User Profile </h3>
         </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-8">
+                    <dl class="row">
+                        <dt class="col-sm-3">Username</dt>
+                        <dd class="col-sm-9">{{ username }}</dd>
 
-    <div class="logout-container">
-        <div class="logout-header">
-            <p class="mb-0"><button type="button" class="btn btn-secondary"><a href="index.html">Logout</a></button></p>
-    </div>
-        
-        <!-- <div class="login-body">
-            <form id="loginForm">
-                <div class="input-group mb-3">
-                    <span class="input-group-text"><i class="fas fa-user"></i></span>
-                    <input type="text" class="form-control" id="username" placeholder="Username or Email" required>
+                        <dt class="col-sm-3">Member Since</dt>
+                        <dd class="col-sm-9">(To be edited)</dd>
+
+                        <dt class="col-sm-3">Total Files</dt>
+                        <dd class="col-sm-9">//{{ files|length }}</dd>
+                    </dl>
                 </div>
-                
-                <div class="input-group mb-3">
-                    <span class="input-group-text"><i class="fas fa-key"></i></span>
-                    <input type="password" class="form-control" id="password" placeholder="Password" required>
-                    <span class="input-group-text" id="togglePassword" style="cursor: pointer;">
-                        <i class="fas fa-eye"></i>
+                <div class="col-md-4 text-end">
+                    <a href="{{ url_for('main.index') }}" class="btn btn-warning">
+                        <i class="bi bi-gear me-2"></i>Account Settings
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <br>
+    <div class="card shadow">
+        <div class="card-header bg-danger text-white">
+            <h3 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Your Files </h3>
+        </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <dl class="row">
+                            <dt class="col-sm-3">Number of unread files</dt>
+                            <dd class="col-sm-9">(To be edited)</dd>
+                            // Add the list of all files for me here in future
+                        </dl>
+                    </div>
+                </div>
+                    <div class="col-md-4 text-end">
+                        <a href="{{ url_for('main.index') }}" class="btn btn-warning">
+                            <i class="bi bi-folder2-open me-2"></i>View your files
+                        </a>
+                    </div>
+            </div>
+    </div>
+    <br>
+    <div class="card shadow">
+        <div class="card-header bg-success text-white">
+            <h3 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Upload a new file</h3>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-8">
+                    <dl class="row">
+                        <dt class="col-sm-3">Number of uploaded files</dt>
+                        <dd class="col-sm-9">(To be edited)</dd>
+                        // Add the list the files that I uploaded in future
+                    </dl>
+                </div>
+            <div class="col-md-4 text-end">
+                <form id="uploadForm" method="POST" enctype="multipart/form-data" 
+                  action="{{ url_for('main.upload') }}">
+                <div class="mb-3">
+                    <input class="form-control" type="file" name="file" id="fileInput" required
+                           accept=".txt,.pdf,.doc,.docx,.xls,.xlsx">
+                    <small class="form-text text-muted">
+                        Allowed formats: documents, spreadsheets (Max 50MB)
+                    </small>
+                    <button type="submit" class="btn btn-success">
+                        <i class="bi bi-shield-lock me-2"></i>Encrypt & Upload
+                </div>
+            </div>
+        </div>
+    </div>
+    <br>
+    <div class="card shadow">
+        <div class="card-header bg-warning text-white">
+            <h3 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Your recent activity</h3>
+        </div>
+        <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <dl class="row">
+                            <dd class="col-sm-9">(Logging activity To be added)</dd>
+                        </dl>
+                </div>
+            </div>
+    </div>
+    </div>
+
+    <br>
+    <div class="text-left mb-4">
+            <a href="index.html" class="btn btn-primary">
+                <i class="bi bi-box-arrow-left me-2"></i>Logout
+        </a>
+        </div>
+    </div>
 </body>
 </html>

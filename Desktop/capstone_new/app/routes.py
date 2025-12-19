@@ -136,3 +136,15 @@ def register():
         print(f"Database error: {e}")
         flash(f'Database error: {str(e)[:100]}', 'danger')
         return render_template('register.html')
+    
+# @auth.route('/logout')
+# def logout():
+#     session.clear()
+#     flash('You have been logged out.', 'info')
+#     return redirect(url_for('auth.login'))
+
+@auth.route('/upload', methods=['GET', 'POST'])
+def upload_file():
+
+    return "Upload file page - To be implemented"
+

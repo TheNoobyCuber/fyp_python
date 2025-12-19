@@ -23,36 +23,16 @@ class User(db.Model):
     
     def check_password(self, password):
         return check_password_hash(self.password, password)
-
-# class RegisterForm(FlaskForm):
-#     username = StringField('Username', validators=[InputRequired(), Length(min=4, max=80)], render_kw={"placeholder": "Username"})
-#     email = StringField('Email', validators=[InputRequired(), Length(min=6, max=80)], render_kw={"placeholder": "Email"})
-#     password = PasswordField('Password', validators=[InputRequired(), Length(min=6)], render_kw={"placeholder": "Password"})
-#     confirm_password = PasswordField('Confirm Password', validators=[InputRequired(), Length(min=6)], render_kw={"placeholder": "Confirm Password"})
-#     position = SelectField('Position', choices=[('Employee', 'Employee'), ('Manager', 'Manager'), ('Admin', 'Admin')], validators=[InputRequired()])
-
-#     submit = SubmitField('Register')
-
-#     def validate_username(self, username):
-#         existing_username = User.query.filter_by(username=username.data).first()
-#         if existing_username:
-#             raise ValidationError('Username is already taken. Please choose a different one.')
-        
-#     def validate_email(self, email):
-#         existing_email = User.query.filter_by(email=email.data).first()
-#         if existing_email:
-#             raise ValidationError('Email is already registered. Please choose a different one.')
     
-#     def validate_confirm_password(self, confirm_password):
-#         if confirm_password.data != self.password.data:
-#             raise ValidationError('Passwords do not match.')
-        
-
-# class LoginForm(FlaskForm):
-#     username = StringField('Username', validators=[InputRequired(), Length(min=4, max=80)], render_kw={"placeholder": "Username"})
-#     password = PasswordField('Password', validators=[InputRequired(), Length(min=6)], render_kw={"placeholder": "Password"})
-
-#     submit = SubmitField('Login')
+class File(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(200), nullable=False)
+    #filepath = db.Column(db.String(500), nullable=False)
+    uploaded_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    upload_time = db.Column(db.DateTime, default=datetime.utcnow)
+    status = db.Column(db.String(50), default='pending')  # pending, scanned, flagged, safe
+    dlp_policy_id = db.Column(db.Integer, db.ForeignKey('dlp_policy.id'))
+    scan_results = db.Column(db.Text)  # JSON or text summary of scan results
         
 
 class DlpPolicy(db.Model):
