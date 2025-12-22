@@ -11,10 +11,15 @@ import random
 auth = Blueprint('auth', __name__)
 main = Blueprint('main', __name__)
 
-@main.route('/')
+@main.route('/dashboard')
 def index():
     """Home page - shows after login"""
     return render_template('dashboard.html')
+
+@main.route('/admin_dashboard')
+def admin():
+    """Admin dashboard - shows after admin login"""
+    return render_template('admin_dashboard.html')
 
 @auth.route('/login', methods=['GET', 'POST'])
 def login():
@@ -23,12 +28,28 @@ def login():
         password = request.form.get('password')
         #remember = request.form.get('remember')
         
+        if not username:
+            flash('Please enter your username', 'danger')
+            return render_template('login.html', username=username)
+        if not password:
+            flash('Please enter your password', 'danger')
+            return render_template('login.html', username=username)
+        
         user = User.query.filter_by(username=username).first()
+        if not user:
+            flash('Invalid username or password', 'danger')
+            return render_template('login.html', username=username)
+        
         if user and user.check_password(password):
             session['user_id'] = user.id
             session['username'] = user.username
+            session['is_admin'] = user.is_admin
             flash('Login successful!', 'success')
-            return redirect('/dashboard.html')
+
+            if user.is_admin:
+                return redirect('/admin_dashboard')  # Or your admin route
+            else:
+                return redirect(url_for('main.index'))  # Regular user dashboard
         else:
             flash('Invalid username or password', 'danger')
             return render_template('login.html', username=username)
@@ -122,7 +143,7 @@ def register():
             flash('Account created successfully! You can now login.', 'success')
             return redirect(url_for('auth.login'))
         
-        return render_template('register.html')
+        return render_template('login.html')
 
     except Exception as e:
         # Log the actual error
@@ -137,11 +158,11 @@ def register():
         flash(f'Database error: {str(e)[:100]}', 'danger')
         return render_template('register.html')
     
-# @auth.route('/logout')
-# def logout():
-#     session.clear()
-#     flash('You have been logged out.', 'info')
-#     return redirect(url_for('auth.login'))
+@auth.route('/logout')
+def logout():
+    session.clear()
+    flash('You have been logged out.', 'info')
+    return redirect(url_for('auth.login'))
 
 @auth.route('/upload', methods=['GET', 'POST'])
 def upload_file():

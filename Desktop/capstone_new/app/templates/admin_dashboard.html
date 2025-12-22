@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard</title>
+<!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script></head>
+<body>
+    <style>
+        .admin-badge {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            padding: 3px 10px;
+            border-radius: 15px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .stats-card {
+            transition: transform 0.3s;
+        }
+        .stats-card:hover {
+            transform: translateY(-5px);
+        }
+        .admin-action-btn {
+            min-width: 150px;
+        }
+    </style>
+
+    <nav class="navbar navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-shield-lock me-2"></i>DLPS Admin Panel
+            </a>
+            <div class="d-flex">
+                <span class="text-light me-3">
+                    <i class="bi bi-person-circle me-1"></i>{{ session.username }}
+                    <span class="admin-badge ms-2">ADMIN</span>
+                </span>
+                <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-light btn-sm">
+                    <i class="bi bi-box-arrow-right me-1"></i>Logout
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <!-- Quick Stats Row -->
+        <div class="row mb-4">
+            <div class="col-md-3 mb-3">
+                <div class="card stats-card bg-primary text-white">
+                    <div class="card-body">
+                        <h5><i class="bi bi-people"></i> Total Users</h5>
+                        <h2>{{ total_users }}</h2>
+                        <small>+{{ new_users_today }} today</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stats-card bg-success text-white">
+                    <div class="card-body">
+                        <h5><i class="bi bi-file-earmark"></i> Total Files</h5>
+                        <h2>{{ total_files }}</h2>
+                        <small>{{ files_today }} uploaded today</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stats-card bg-warning text-dark">
+                    <div class="card-body">
+                        <h5><i class="bi bi-shield-check"></i> Admins</h5>
+                        <h2>{{ admin_count }}</h2>
+                        <small>System administrators</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stats-card bg-info text-white">
+                    <div class="card-body">
+                        <h5><i class="bi bi-hdd"></i> Storage Used</h5>
+                        <h2>{{ storage_used }} GB</h2>
+                        <small>{{ storage_percent }}% of capacity</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Actions Row -->
+        <div class="row mb-4">
+            <div class="col-12">
+                <div class="card shadow">
+                    <div class="card-header bg-danger text-white">
+                        <h4 class="mb-0"><i class="bi bi-tools me-2"></i>Administrative Actions</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <a href="{{ url_for('main.index') }}" class="btn btn-outline-primary admin-action-btn w-100">
+                                    <i class="bi bi-people-fill me-2"></i>Manage Users
+                                </a>
+                            </div>
+                            <div class="col-md-3">
+                                <a href="{{ url_for('main.index') }}" class="btn btn-outline-success admin-action-btn w-100">
+                                    <i class="bi bi-folder-fill me-2"></i>All System Files
+                                </a>
+                            </div>
+                            <div class="col-md-3">
+                                <a href="{{ url_for('main.index') }}" class="btn btn-outline-warning admin-action-btn w-100">
+                                    <i class="bi bi-clipboard-data me-2"></i>Audit Logs
+                                </a>
+                            </div>
+                            <div class="col-md-3">
+                                <button class="btn btn-outline-info admin-action-btn w-100" data-bs-toggle="modal" data-bs-target="#systemSettingsModal">
+                                    <i class="bi bi-gear-fill me-2"></i>System Settings
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity & User Management -->
+        <div class="row">
+            <!-- Recent Users Table -->
+            <div class="col-md-6 mb-4">
+                <div class="card shadow">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-person-plus me-2"></i>Recent Registrations</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>User</th>
+                                        <th>Email</th>
+                                        <th>Position</th>
+                                        <th>Joined</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for user in recent_users %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ user.fullname }}</strong><br>
+                                            <small class="text-muted">@{{ user.username }}</small>
+                                        </td>
+                                        <td>{{ user.email }}</td>
+                                        <td>
+                                            <span class="badge {% if user.position == 'Admin' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                                {{ user.position }}
+                                            </span>
+                                        </td>
+                                        <td>{{ user.created_at.strftime('%Y-%m-%d') }}</td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm">
+                                                <!-- <button class="btn btn-outline-info" onclick="viewUser({ User.ID })"> -->
+                                                    <!-- <i class="bi bi-eye"></i> -->
+                                                <!-- </button> -->
+                                                <!-- {% if not user.is_admin %} -->
+                                                <!-- <button class="btn btn-outline-success" onclick="makeAdmin({ User.ID })"> -->
+                                                    <!-- <i class="bi bi-shield-plus"></i>
+                                                </button> -->
+                                                <!-- {% endif %} -->
+                                                <!-- <button class="btn btn-outline-danger" onclick="deleteUser({ User.ID })">
+                                                    <i class="bi bi-trash"></i>
+                                                </button> -->
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Recent Audit Logs -->
+    <div class="modal fade" id="systemSettingsModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header bg-info text-white">
+                        <h5 class="modal-title"><i class="bi bi-gear-fill me-2"></i>System Settings</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="systemSettingsForm">
+                            <div class="mb-3">
+                                <label class="form-label">Max File Size (MB)</label>
+                                <input type="number" class="form-control" name="max_file_size" value="50" min="1" max="1000">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Allowed File Types</label>
+                                <input type="text" class="form-control" name="allowed_types" value=".txt,.pdf,.doc,.docx,.xls,.xlsx">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">System Maintenance</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="maintenance_mode">
+                                    <label class="form-check-label">Enable Maintenance Mode</label>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">User Registration</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="allow_registration" checked>
+                                    <label class="form-check-label">Allow New Registrations</label>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-primary" onclick="saveSystemSettings()">Save Changes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <br>
+    <div class="text-left mb-4">
+            <a href="index.html" class="btn btn-primary">
+                <i class="bi bi-box-arrow-left me-2"></i>Logout
+        </a>
+        </div>
+    </div>
+
+    <script>
+        // Admin JavaScript functions
+        function viewUser(userId) {
+            window.location.href = `/admin/user/${userId}`;
+        }
+        
+        function makeAdmin(userId) {
+            if(confirm('Make this user an administrator?')) {
+                fetch(`/admin/make-admin/${userId}`, { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if(data.success) {
+                            alert('User promoted to admin!');
+                            location.reload();
+                        }
+                    });
+            }
+        }
+        
+        function deleteUser(userId) {
+            if(confirm('Are you sure you want to delete this user? All their files will also be deleted.')) {
+                fetch(`/admin/delete-user/${userId}`, { method: 'DELETE' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if(data.success) {
+                            alert('User deleted successfully!');
+                            location.reload();
+                        }
+                    });
+            }
+        }
+        
+        function saveSystemSettings() {
+            const form = document.getElementById('systemSettingsForm');
+            const formData = new FormData(form);
+            
+            fetch('/admin/update-settings', {
+                method: 'POST',
+                body: formData
+            }).then(response => {
+                alert('Settings saved!');
+                $('#systemSettingsModal').modal('hide');
+            });
+        }
+        
+        // Auto-refresh every 30 seconds for live updates
+        setInterval(() => {
+            fetch('/admin/stats')
+                .then(response => response.json())
+                .then(data => {
+                    // Update stats cards
+                    document.querySelectorAll('.stats-card h2')[0].textContent = data.total_users;
+                    document.querySelectorAll('.stats-card h2')[1].textContent = data.total_files;
+                    document.querySelectorAll('.stats-card h2')[2].textContent = data.admin_count;
+                    document.querySelectorAll('.stats-card h2')[3].textContent = data.storage_used + ' GB';
+                });
+        }, 30000);
+    </script>
+</body>
+</html>
