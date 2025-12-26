@@ -38,60 +38,34 @@
         </div>
     </div>
     <br>
-    <div class="card shadow">
+    <div class="card-body">
         <div class="card-header bg-danger text-white">
-            <h3 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Your Files </h3>
+            <h3 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Welcome Back! What do you want to do today?</h3>
         </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-8">
-                        <dl class="row">
-                            <dt class="col-sm-3">Number of unread files</dt>
-                            <dd class="col-sm-9">(To be edited)</dd>
-                            // Add the list of all files for me here in future
-                        </dl>
-                    </div>
-                </div>
-                    <div class="col-md-4 text-end">
-                        <a href="{{ url_for('main.index') }}" class="btn btn-warning">
-                            <i class="bi bi-folder2-open me-2"></i>View your files
-                        </a>
-                    </div>
-            </div>
-    </div>
-    <br>
-    <div class="card shadow">
-        <div class="card-header bg-success text-white">
-            <h3 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Upload a new file</h3>
+        <hr>
+        <div class="col-md-3">
+            <a href="{{ url_for('main.view_files') }}" class="btn btn-outline-success admin-action-btn h-75
+            w-100">
+                <h4><i class="bi bi-folder-fill me-2"></i>View Files</h4>
+            </a>
         </div>
-        <div class="card-body">
-            <div class="row">
-                <div class="col-md-8">
-                    <dl class="row">
-                        <dt class="col-sm-3">Number of uploaded files</dt>
-                        <dd class="col-sm-9">(To be edited)</dd>
-                        // Add the list the files that I uploaded in future
-                    </dl>
-                </div>
-            <div class="col-md-4 text-end">
-                <form id="uploadForm" method="POST" enctype="multipart/form-data" 
-                  action="{{ url_for('main.index') }}">
-                <div class="mb-3">
-                    <input class="form-control" type="file" name="file" id="fileInput" required
-                           accept=".txt,.pdf,.doc,.docx,.xls,.xlsx">
-                    <small class="form-text text-muted">
-                        Allowed formats: documents, spreadsheets (Max 50MB)
-                    </small>
-                    <button type="submit" class="btn btn-success">
-                        <i class="bi bi-shield-lock me-2"></i>Encrypt & Upload
-                </div>
-            </div>
+        <br>
+        <div class="col-md-3">
+            <a href="{{ url_for('main.upload') }}" class="btn btn-outline-warning admin-action-btn w-100">
+                <h4><i class="bi bi-clipboard-data me-2"></i>Upload a File</h4>
+            </a>
+        </div>
+        <br>
+        <div class="col-md-3">
+            <button class="btn btn-outline-info admin-action-btn w-100" data-bs-toggle="modal" data-bs-target="#systemSettingsModal">
+                <h4><i class="bi bi-gear-fill me-2"></i>Change my Account Settings</h4>
+            </button>
         </div>
     </div>
     <br>
     <div class="card shadow">
         <div class="card-header bg-warning text-white">
-            <h3 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Your recent activity</h3>
+            <h3 class="mb-0"><i class="bi bi-clipboard-data me-2"></i>Your recent activity</h3>
         </div>
         <div class="card-body">
                 <div class="row">

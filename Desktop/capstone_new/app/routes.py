@@ -3,11 +3,12 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from sqlalchemy.exc import SQLAlchemyError
 from wtforms import ValidationError
 # from app import AuditLog
-from .models import User, db
+from .models import File, User, db
 from datetime import datetime
 import time
 import random
 
+ALLOWED_FILE_EXTENSIONS = ['.txt', '.pdf', '.doc', '.docx', '.xls', '.xlsx']
 auth = Blueprint('auth', __name__)
 main = Blueprint('main', __name__)
 
@@ -20,6 +21,72 @@ def index():
 def admin():
     """Admin dashboard - shows after admin login"""
     return render_template('admin_dashboard.html')
+
+@main.route('/files')
+def view_files():
+    """View all uploaded files"""
+    return render_template('files.html')
+
+@main.route('/upload', methods=['GET', 'POST'])
+def upload():
+    try:   
+        if request.method == 'POST':
+            file = request.files['file']
+            if file.filename == '':
+                flash('No selected file. Please choose a file to upload.', 'danger')
+                return render_template('uploadfile.html')
+            description = request.form.get('description')
+            shared_with = request.form.get('shared_with')  # Comma-separated user IDs
+
+            original_filename = file.filename
+
+            def get_file_extension(filename):
+                """Extract file extension including the dot"""
+                if '.' in original_filename:
+                    return '.' + filename.rsplit('.', 1)[1].lower()
+                return ''
+            
+            filetype = get_file_extension(original_filename)
+
+            if filetype not in ALLOWED_FILE_EXTENSIONS:
+                flash('File type not allowed. Please upload a valid file.', 'danger')
+                return render_template('uploadfile.html', shared_with=shared_with, description=description)
+            
+            # Create unique filename
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            user_id = session.get('user_id')
+            unique_filename = f"{user_id}_{timestamp}_{original_filename}"
+
+            new_file = File(
+                user_id=user_id,
+                filename=unique_filename,
+                original_filename=original_filename,
+                filetype=filetype,
+                file_size=0,  # Placeholder for file size
+                description=description,
+                shared_with=shared_with,
+                status='pending',
+                sensitivity=5,
+                action='no action'
+            )
+            db.session.add(new_file)
+            db.session.commit()
+            print(f"File {original_filename} uploaded by user {user_id}")
+            flash(f'File "{original_filename}" uploaded successfully!', 'success')
+            return redirect(url_for('main.view_files'))
+    
+    except Exception as e:
+            print(f"\n=== DEBUG: ERROR ===")
+            print(f"Error: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+            db.session.rollback()
+            flash(f'Error uploading file: {str(e)}', 'danger')
+            return redirect(request.url)
+
+    """Upload file page"""
+    return render_template('uploadfile.html')
 
 @auth.route('/login', methods=['GET', 'POST'])
 def login():
@@ -163,9 +230,4 @@ def logout():
     session.clear()
     flash('You have been logged out.', 'info')
     return redirect(url_for('auth.login'))
-
-@auth.route('/upload', methods=['GET', 'POST'])
-def upload_file():
-
-    return "Upload file page - To be implemented"
 

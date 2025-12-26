@@ -17,22 +17,23 @@ CREATE TABLE File (
     file_id INT PRIMARY KEY AUTO_INCREMENT,
     user_id INT NOT NULL,
     filename VARCHAR(255) NOT NULL,     
-    -- Encryption parameters
-    encrypted_content LONGBLOB NOT NULL,  -- Encrypted file content
-    encrypted_key BLOB NOT NULL,  -- HMAC-SHA256(master_key, master_salt)
-    file_salt BLOB NOT NULL,      -- 32-byte random
-    master_salt BLOB NOT NULL,    -- 32-byte random
-    iv BLOB NOT NULL,             -- 16-byte initialization vector
+    original_filename VARCHAR(255) NOT NULL,  -- Original filename
+    filetype VARCHAR(50) NOT NULL,  -- File type
     file_size BIGINT NOT NULL,    -- Original file size in bytes
-    uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    description TEXT,      -- 32-byte random
+    shared_with TEXT,   -- 32-byte random
+    upload_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(50) DEFAULT 'pending', -- pending, scanned, flagged, safe
+    sensitivity INT,  -- 1-10
+    action VARCHAR(50),  -- e.g., 'block', 'quarantine', 'alert'
     FOREIGN KEY (user_id) REFERENCES User(ID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Insert admin user
 -- Note: This uses a pre-hashed password for 'admin'
 -- username: admin, password: 123
-INSERT INTO User (username, email, password, position, is_admin, created_at) 
-VALUES ('admin', 'admin@admin.com', 'scrypt:32768:8:1$1HQpElXMtXWRWYBr$0750c8266caee9698e3cc39eaaa71cf3fac245f7f6407d27c7e878d07489d64b0fc9a4deb71731903f4d23584264e9be48bb249b045b44a62c41652206d43e95', 'admin', 1, CURRENT_TIMESTAMP);
+INSERT INTO User (fullname, username, email, password, position, is_admin, created_at) 
+VALUES ('admin', 'admin', 'admin@admin.com', 'scrypt:32768:8:1$1HQpElXMtXWRWYBr$0750c8266caee9698e3cc39eaaa71cf3fac245f7f6407d27c7e878d07489d64b0fc9a4deb71731903f4d23584264e9be48bb249b045b44a62c41652206d43e95', 'admin', 1, CURRENT_TIMESTAMP);
 
 -- Add audit log for admin creation
 -- INSERT INTO AuditLog (user_id, action_type, details, timestamp)

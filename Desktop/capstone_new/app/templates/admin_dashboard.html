@@ -47,75 +47,33 @@
             </div>
         </div>
     </nav>
-
-    <div class="container-fluid">
-        <!-- Quick Stats Row -->
-        <div class="row mb-4">
-            <div class="col-md-3 mb-3">
-                <div class="card stats-card bg-primary text-white">
-                    <div class="card-body">
-                        <h5><i class="bi bi-people"></i> Total Users</h5>
-                        <h2>{{ total_users }}</h2>
-                        <small>+{{ new_users_today }} today</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card stats-card bg-success text-white">
-                    <div class="card-body">
-                        <h5><i class="bi bi-file-earmark"></i> Total Files</h5>
-                        <h2>{{ total_files }}</h2>
-                        <small>{{ files_today }} uploaded today</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card stats-card bg-warning text-dark">
-                    <div class="card-body">
-                        <h5><i class="bi bi-shield-check"></i> Admins</h5>
-                        <h2>{{ admin_count }}</h2>
-                        <small>System administrators</small>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-3 mb-3">
-                <div class="card stats-card bg-info text-white">
-                    <div class="card-body">
-                        <h5><i class="bi bi-hdd"></i> Storage Used</h5>
-                        <h2>{{ storage_used }} GB</h2>
-                        <small>{{ storage_percent }}% of capacity</small>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- Admin Actions Row -->
         <div class="row mb-4">
             <div class="col-12">
                 <div class="card shadow">
                     <div class="card-header bg-danger text-white">
-                        <h4 class="mb-0"><i class="bi bi-tools me-2"></i>Administrative Actions</h4>
+                        <h1 class="mb-0"><i class="bi bi-tools me-2"></i>Administrative Actions</h1>
                     </div>
                     <div class="card-body">
                         <div class="row g-3">
                             <div class="col-md-3">
                                 <a href="{{ url_for('main.index') }}" class="btn btn-outline-primary admin-action-btn w-100">
-                                    <i class="bi bi-people-fill me-2"></i>Manage Users
+                                    <h4><i class="bi bi-people-fill me-2"></i>Manage Users</h4>
                                 </a>
                             </div>
                             <div class="col-md-3">
                                 <a href="{{ url_for('main.index') }}" class="btn btn-outline-success admin-action-btn w-100">
-                                    <i class="bi bi-folder-fill me-2"></i>All System Files
+                                    <h4><i class="bi bi-folder-fill me-2"></i>All System Files</h4>
                                 </a>
                             </div>
                             <div class="col-md-3">
                                 <a href="{{ url_for('main.index') }}" class="btn btn-outline-warning admin-action-btn w-100">
-                                    <i class="bi bi-clipboard-data me-2"></i>Audit Logs
+                                    <h4><i class="bi bi-clipboard-data me-2"></i>Audit Logs</h4>
                                 </a>
                             </div>
                             <div class="col-md-3">
                                 <button class="btn btn-outline-info admin-action-btn w-100" data-bs-toggle="modal" data-bs-target="#systemSettingsModal">
-                                    <i class="bi bi-gear-fill me-2"></i>System Settings
+                                    <h4><i class="bi bi-gear-fill me-2"></i>System Settings</h2>
                                 </button>
                             </div>
                         </div>
@@ -130,7 +88,7 @@
             <div class="col-md-6 mb-4">
                 <div class="card shadow">
                     <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0"><i class="bi bi-person-plus me-2"></i>Recent Registrations</h5>
+                        <h2 class="mb-0"><i class="bi bi-person-plus me-2"></i>Recent Registrations</h2>
                     </div>
                     <div class="card-body">
                         <div class="table-responsive">
