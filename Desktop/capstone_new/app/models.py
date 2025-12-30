@@ -40,6 +40,15 @@ class File(db.Model):
     status = db.Column(db.String(50), default='pending')  # pending, scanned, flagged, safe
     sensitivity = db.Column(db.Integer)  # 1-10
     action = db.Column(db.String(20))  # 'block', 'alert', 'quarantine', 'no action
+
+class AuditLog(db.Model):
+    __tablename__ = 'AuditLog'
+    log_id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
+    action_type = db.Column(db.String(50), nullable=False)  # e.g., 'upload', 'delete', 'share'
+    details = db.Column(db.Text)  # Additional details about the action
+    status = db.Column(db.String(50), default='success')  # success, failed
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
         
 
 class DlpPolicy(db.Model):

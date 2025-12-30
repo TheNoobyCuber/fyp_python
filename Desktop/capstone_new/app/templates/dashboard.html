@@ -19,14 +19,15 @@
             <div class="row">
                 <div class="col-md-8">
                     <dl class="row">
+
+                        <dt class="col-sm-3">User ID</dt>
+                        <dd class="col-sm-9">{{ user_id }}</dd>
+
                         <dt class="col-sm-3">Username</dt>
                         <dd class="col-sm-9">{{ username }}</dd>
 
-                        <dt class="col-sm-3">Member Since</dt>
-                        <dd class="col-sm-9">(To be edited)</dd>
-
                         <dt class="col-sm-3">Total Files</dt>
-                        <dd class="col-sm-9">//{{ files|length }}</dd>
+                        <dd class="col-sm-9">{{ files|length }}</dd>
                     </dl>
                 </div>
                 <div class="col-md-4 text-end">
@@ -63,24 +64,60 @@
         </div>
     </div>
     <br>
+
     <div class="card shadow">
-        <div class="card-header bg-warning text-white">
-            <h3 class="mb-0"><i class="bi bi-clipboard-data me-2"></i>Your recent activity</h3>
+    <div class="card-header bg-success text-white">
+        <h3 class="mb-0"><i class="bi bi-clock-history me-2"></i>Your Recent Activity</h3>
+    </div>
+    <div class="card-body">
+        {% if logs %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Action</th>
+                        <th>Details</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs %}
+                    <tr>
+                        <td>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        <td>
+                            <span class="badge 
+                                {% if log.action_type == 'login' %}bg-success
+                                {% elif log.action_type == 'logout' %}bg-info
+                                {% elif log.action_type == 'register' %}bg-primary
+                                {% elif 'upload' in log.action_type %}bg-warning
+                                {% else %}bg-secondary{% endif %}">
+                                {{ log.action_type }}
+                            </span>
+                        </td>
+                        <td>{{ log.details[:50] }}{% if log.details|length > 50 %}...{% endif %}</td>
+                        <td>
+                            <span class="badge {% if log.status == 'success' %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ log.status }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
-        <div class="card-body">
-                <div class="row">
-                    <div class="col-md-8">
-                        <dl class="row">
-                            <dd class="col-sm-9">(Logging activity To be added)</dd>
-                        </dl>
-                </div>
-            </div>
+        {% else %}
+        <div class="text-center py-4">
+            <i class="bi bi-activity display-4 text-muted"></i>
+            <p class="text-muted mt-3">No recent logs found.</p>
+        </div>
+        {% endif %}
     </div>
-    </div>
+</div>
 
     <br>
     <div class="text-left mb-4">
-            <a href="index.html" class="btn btn-primary">
+            <a href="{{ url_for('auth.logout') }}" class="btn btn-primary">
                 <i class="bi bi-box-arrow-left me-2"></i>Logout
         </a>
         </div>

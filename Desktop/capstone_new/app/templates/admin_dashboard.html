@@ -182,6 +182,71 @@
         </div>
     </div>
 
+    <div class="card shadow">
+        <div class="card-header bg-success text-white">
+            <h3 class="mb-0"><i class="bi bi-clipboard-data me-2"></i>Your recent activity</h3>
+        </div>
+        <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <dl class="row">
+                            <dd class="col-sm-9">(Logging activity To be added)</dd>
+                        </dl>
+                </div>
+            </div>
+    </div>
+    </div>
+
+    <div class="card shadow">
+    <div class="card-header bg-success text-white">
+        <h3 class="mb-0"><i class="bi bi-clock-history me-2"></i>Your Recent Activity</h3>
+    </div>
+    <div class="card-body">
+        {% if activities %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Action</th>
+                        <th>Details</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for activity in activities %}
+                    <tr>
+                        <td>{{ activity.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        <td>
+                            <span class="badge 
+                                {% if activity.action_type == 'login' %}bg-success
+                                {% elif activity.action_type == 'logout' %}bg-info
+                                {% elif activity.action_type == 'register' %}bg-primary
+                                {% elif 'upload' in activity.action_type %}bg-warning
+                                {% else %}bg-secondary{% endif %}">
+                                {{ activity.action_type }}
+                            </span>
+                        </td>
+                        <td>{{ activity.details[:50] }}{% if activity.details|length > 50 %}...{% endif %}</td>
+                        <td>
+                            <span class="badge {% if activity.status == 'success' %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ activity.status }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+            <i class="bi bi-activity display-4 text-muted"></i>
+            <p class="text-muted mt-3">No recent activities found.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
     <br>
     <div class="text-left mb-4">
             <a href="index.html" class="btn btn-primary">

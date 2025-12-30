@@ -7,5 +7,26 @@
 </head>
 <body>
     <h1>Hello, this is the view files page!</h1>
+    <table>
+        {% if files %}
+        <thead>
+            <tr>
+                <th>File ID</th>
+                <th>Filename</th>
+                <th>Uploaded By</th>
+                <th>Upload Date</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for file in files %}
+            <tr>
+                <td>{{ file.id }}</td>
+                <td>{{ file.filename }}</td>
+                <td>{{ file.uploaded_by }}</td>
+                <td>{{ file.upload_date }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
 </body>
 </html>

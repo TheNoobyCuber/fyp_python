@@ -29,6 +29,17 @@ CREATE TABLE File (
     FOREIGN KEY (user_id) REFERENCES User(ID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE AuditLog (
+    __tablename__ = 'AuditLog',
+    log_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT,
+    action_type VARCHAR(50) NOT NULL,  -- e.g., 'upload', 'delete', 'share'
+    details TEXT,  -- Additional details about the action
+    status VARCHAR(50) DEFAULT 'success', -- success, failed
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES User(ID) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Insert admin user
 -- Note: This uses a pre-hashed password for 'admin'
 -- username: admin, password: 123
@@ -36,5 +47,5 @@ INSERT INTO User (fullname, username, email, password, position, is_admin, creat
 VALUES ('admin', 'admin', 'admin@admin.com', 'scrypt:32768:8:1$1HQpElXMtXWRWYBr$0750c8266caee9698e3cc39eaaa71cf3fac245f7f6407d27c7e878d07489d64b0fc9a4deb71731903f4d23584264e9be48bb249b045b44a62c41652206d43e95', 'admin', 1, CURRENT_TIMESTAMP);
 
 -- Add audit log for admin creation
--- INSERT INTO AuditLog (user_id, action_type, details, timestamp)
--- VALUES (1, 'admin_create', 'Admin user created during database initialization', CURRENT_TIMESTAMP);
+INSERT INTO AuditLog (user_id, action_type, details, timestamp)
+VALUES (1, 'admin_create', 'Admin user created during database initialization', CURRENT_TIMESTAMP);

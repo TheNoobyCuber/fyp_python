@@ -3,7 +3,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from sqlalchemy.exc import SQLAlchemyError
 from wtforms import ValidationError
 # from app import AuditLog
-from .models import File, User, db
+from .models import AuditLog, File, User, db
 from datetime import datetime
 import time
 import random
@@ -14,8 +14,13 @@ main = Blueprint('main', __name__)
 
 @main.route('/dashboard')
 def index():
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('auth.login'))
+    
     """Home page - shows after login"""
-    return render_template('dashboard.html')
+    logs = AuditLog.query.filter_by(user_id=user_id).order_by(AuditLog.timestamp.desc()).limit(20).all()
+    return render_template('dashboard.html', logs=logs)
 
 @main.route('/admin_dashboard')
 def admin():
@@ -71,6 +76,16 @@ def upload():
             )
             db.session.add(new_file)
             db.session.commit()
+
+            # Logging the registration event
+            log = auditlog(
+                user_id=session['user_id'],
+                action_type='upload',
+                details='Successful file upload: ' + original_filename
+            )
+            db.session.add(log)
+            db.session.commit()
+    
             print(f"File {original_filename} uploaded by user {user_id}")
             flash(f'File "{original_filename}" uploaded successfully!', 'success')
             return redirect(url_for('main.view_files'))
@@ -113,6 +128,15 @@ def login():
             session['is_admin'] = user.is_admin
             flash('Login successful!', 'success')
 
+            # Logging the registration event
+            log = auditlog(
+                user_id=session['user_id'],
+                action_type='login',
+                details='Successful login attempt'
+            )
+            db.session.add(log)
+            db.session.commit()
+
             if user.is_admin:
                 return redirect('/admin_dashboard')  # Or your admin route
             else:
@@ -120,6 +144,7 @@ def login():
         else:
             flash('Invalid username or password', 'danger')
             return render_template('login.html', username=username)
+        
     
     return render_template('login.html')
 
@@ -134,8 +159,7 @@ def register():
             confirm_password = request.form.get('confirm_password')
             position = request.form.get('position')
             #otp = request.form.get('otp')
-            print(f"Creating user: {username}, {email}, position: {position}") # Debug print
-            
+                        
             # Checking and confirm password match
             if password != confirm_password:
                 raise ValidationError('Passwords do not match.')
@@ -190,19 +214,18 @@ def register():
             new_user.set_password(password)
             
             db.session.add(new_user)
-            start_time = time.time()
+            db.session.flush()  # Get new_user.id before commit
+
+            user_id = new_user.id
+
+            # Logging the registration event
+            log = auditlog(
+                user_id=user_id,
+                action_type='register',
+                details='New user registration with email verification'
+            )
+            db.session.add(log)
             db.session.commit()
-            commit_time = time.time() - start_time
-            print(f"Commit took: {commit_time:.2f} seconds")
-            
-            # # Logging the registration event
-            # log = AuditLog(
-            #     user_id=new_user.user_id,
-            #     action_type='register',
-            #     details='New user registration with email verification'
-            # )
-            # db.session.add(log)
-            # db.session.commit()
             
             # Clearing the OTP session data
             # session.pop('registration_otp', None)
@@ -213,7 +236,6 @@ def register():
         return render_template('login.html')
 
     except Exception as e:
-        # Log the actual error
         print(f"ERROR in register: {type(e).__name__}: {e}")
         flash(f'Registration failed: {str(e)}', 'danger')
         return render_template('register.html', 
@@ -227,7 +249,37 @@ def register():
     
 @auth.route('/logout')
 def logout():
+    # Logging the logout event
+    log = auditlog(
+        user_id=session['user_id'],
+        action_type='logout',
+        details='Successful logout attempt'
+    )
+    db.session.add(log)
+    db.session.commit()
+    
     session.clear()
     flash('You have been logged out.', 'info')
     return redirect(url_for('auth.login'))
 
+def auditlog(user_id, action_type, details='', status='success'):
+    """Helper function to log audit events"""
+    try:
+        log_entry = AuditLog(
+            user_id=user_id,
+            action_type=action_type,
+            details=details,
+            status=status,
+            timestamp=datetime.utcnow()
+        )
+        db.session.add(log_entry)
+        return log_entry
+    except Exception as e:
+        print(f"Failed to log audit event: {e}")
+        db.session.rollback()
+
+@main.route('/view_audit_logs')
+def view_audit_logs():
+    user_id = session.get('user_id')
+    logs = AuditLog.query.filter_by(user_id=user_id).order_by(AuditLog.timestamp.desc()).all()
+    return render_template('audit_logs.html', logs=logs)
