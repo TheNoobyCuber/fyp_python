@@ -34,8 +34,9 @@ def admin():
         return redirect(url_for('auth.login'))
     
     """Admin dashboard - shows after admin login"""
-    logs = AuditLog.query.filter_by(user_id=user_id).order_by(AuditLog.timestamp.desc()).limit(20).all()
-    return render_template('admin_dashboard.html')
+    admin_logs = AuditLog.query.filter_by(user_id=user_id).order_by(AuditLog.timestamp.desc()).limit(20).all()
+    registered_users = User.query.order_by(User.created_at.desc()).limit(5).all()
+    return render_template('admin_dashboard.html', registered_users=registered_users, logs=admin_logs)
 
 @main.route('/files')
 def view_files():
@@ -211,7 +212,7 @@ def register():
                 username=username, 
                 email=email, 
                 position=position,
-                is_admin=True if position == 'Admin' else False
+                is_admin=False
             )
             new_user.set_password(password)
             
