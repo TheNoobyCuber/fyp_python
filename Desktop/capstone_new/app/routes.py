@@ -19,12 +19,22 @@ def index():
         return redirect(url_for('auth.login'))
     
     """Home page - shows after login"""
+    user = User.query.get(user_id)
+    username = User.query.with_entities(User.username).filter_by(id=user_id).first().username
     logs = AuditLog.query.filter_by(user_id=user_id).order_by(AuditLog.timestamp.desc()).limit(20).all()
-    return render_template('dashboard.html', logs=logs)
+    return render_template('dashboard.html', user=user, username=username, logs=logs)
 
 @main.route('/admin_dashboard')
 def admin():
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('auth.login'))
+    if user_id and not session.get('is_admin'):
+        flash('Access denied: Admins only', 'danger')
+        return redirect(url_for('auth.login'))
+    
     """Admin dashboard - shows after admin login"""
+    logs = AuditLog.query.filter_by(user_id=user_id).order_by(AuditLog.timestamp.desc()).limit(20).all()
     return render_template('admin_dashboard.html')
 
 @main.route('/files')
@@ -128,18 +138,28 @@ def login():
             session['is_admin'] = user.is_admin
             flash('Login successful!', 'success')
 
-            # Logging the registration event
-            log = auditlog(
-                user_id=session['user_id'],
-                action_type='login',
-                details='Successful login attempt'
-            )
-            db.session.add(log)
-            db.session.commit()
-
             if user.is_admin:
+
+                # Logging the registration event
+                log = auditlog(
+                    user_id=session['user_id'],
+                    action_type='admin login',
+                    details='Successful login attempt'
+                )
+                db.session.add(log)
+                db.session.commit()
+
                 return redirect('/admin_dashboard')  # Or your admin route
+
             else:
+                # Logging the registration event
+                log = auditlog(
+                    user_id=session['user_id'],
+                    action_type='login',
+                    details='Successful login attempt'
+                )
+                db.session.add(log)
+                db.session.commit()
                 return redirect(url_for('main.index'))  # Regular user dashboard
         else:
             flash('Invalid username or password', 'danger')
@@ -183,24 +203,6 @@ def register():
             # Checking if the email is already registered
             if User.query.filter_by(email=email).first():
                 raise ValidationError('Email is already registered. Please choose a different one.')
-            
-            # Checking OTP validity
-            registration_otp = session.get('registration_otp', {})
-            stored_otp = registration_otp.get('otp')
-            stored_email = registration_otp.get('email')
-            stored_username = registration_otp.get('username')
-            expiry = registration_otp.get('expiry', 0)
-            
-            # if not stored_otp or email != stored_email:
-            #     flash('Please request a new verification code', 'danger')
-            #     return render_template('register.html', username=username, email=email)
-            
-            # if datetime.now().timestamp() > expiry:
-            #     flash('Verification code has expired. Please request a new one', 'danger')
-            #     return render_template('register.html', username=username, email=email)
-            
-            #if otp != stored_otp:
-                #flash('Invalid verification code', 'danger')
                 #return render_template('register.html', username=username, email=email)
             
             # Creating a new user
@@ -281,5 +283,6 @@ def auditlog(user_id, action_type, details='', status='success'):
 @main.route('/view_audit_logs')
 def view_audit_logs():
     user_id = session.get('user_id')
+    user = User.query.get(user_id)
     logs = AuditLog.query.filter_by(user_id=user_id).order_by(AuditLog.timestamp.desc()).all()
-    return render_template('audit_logs.html', logs=logs)
+    return render_template('audit_logs.html', user=user, logs=logs)

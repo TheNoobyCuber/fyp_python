@@ -21,25 +21,22 @@
                     <dl class="row">
 
                         <dt class="col-sm-3">User ID</dt>
-                        <dd class="col-sm-9">{{ user_id }}</dd>
+                        <dd class="col-sm-9">{{ user.id }}</dd>
 
                         <dt class="col-sm-3">Username</dt>
-                        <dd class="col-sm-9">{{ username }}</dd>
+                        <dd class="col-sm-9">{{ user.username }}</dd>
 
                         <dt class="col-sm-3">Total Files</dt>
                         <dd class="col-sm-9">{{ files|length }}</dd>
                     </dl>
                 </div>
-                <div class="col-md-4 text-end">
-                    <a href="{{ url_for('main.index') }}" class="btn btn-warning">
-                        <i class="bi bi-gear me-2"></i>Account Settings
-                    </a>
-                </div>
+                <div class="col-md-4 text-center">
+                    <i class="bi bi-person-circle display-1 text-muted"></i>
             </div>
         </div>
     </div>
     <br>
-    <div class="card-body">
+    <div class="row card-body justify-content-center">
         <div class="card-header bg-danger text-white">
             <h3 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Welcome Back! What do you want to do today?</h3>
         </div>

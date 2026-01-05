@@ -55,19 +55,14 @@
                         <h1 class="mb-0"><i class="bi bi-tools me-2"></i>Administrative Actions</h1>
                     </div>
                     <div class="card-body">
-                        <div class="row g-3">
+                        <div class="row g-5 text-center justify-content-center">
                             <div class="col-md-3">
                                 <a href="{{ url_for('main.index') }}" class="btn btn-outline-primary admin-action-btn w-100">
                                     <h4><i class="bi bi-people-fill me-2"></i>Manage Users</h4>
                                 </a>
                             </div>
                             <div class="col-md-3">
-                                <a href="{{ url_for('main.index') }}" class="btn btn-outline-success admin-action-btn w-100">
-                                    <h4><i class="bi bi-folder-fill me-2"></i>All System Files</h4>
-                                </a>
-                            </div>
-                            <div class="col-md-3">
-                                <a href="{{ url_for('main.index') }}" class="btn btn-outline-warning admin-action-btn w-100">
+                                <a href="{{ url_for('main.view_audit_logs') }}" class="btn btn-outline-warning admin-action-btn w-100">
                                     <h4><i class="bi bi-clipboard-data me-2"></i>Audit Logs</h4>
                                 </a>
                             </div>
@@ -85,7 +80,7 @@
         <!-- Recent Activity & User Management -->
         <div class="row">
             <!-- Recent Users Table -->
-            <div class="col-md-6 mb-4">
+            <div class="col-md-12 mb-4">
                 <div class="card shadow">
                     <div class="card-header bg-primary text-white">
                         <h2 class="mb-0"><i class="bi bi-person-plus me-2"></i>Recent Registrations</h2>
@@ -103,7 +98,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for user in recent_users %}
+                                    {% for user in Users %}
                                     <tr>
                                         <td>
                                             <strong>{{ user.fullname }}</strong><br>
@@ -139,7 +134,68 @@
                     </div>
                 </div>
             </div>
-            <!-- Recent Audit Logs -->
+           
+    <!-- Recent Activity Table -->
+    <div class="card shadow">
+    <div class="card-header bg-success text-white">
+        <h3 class="mb-0"><i class="bi bi-clock-history me-2"></i>Your Recent Activity</h3>
+        <div class="text-end"><a href="{{ url_for('main.view_audit_logs') }}" class="btn btn-warning">
+            <i class="bi bi-gear me-2"></i>View all</a></div>
+    </div>
+    <div class="card-body">
+        {% if activities %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Action</th>
+                        <th>Details</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for activity in activities %}
+                    <tr>
+                        <td>{{ activity.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                        <td>
+                            <span class="badge 
+                                {% if activity.action_type == 'admin login' %}bg-success
+                                {% elif activity.action_type == 'logout' %}bg-info
+                                {% elif activity.action_type == 'register' %}bg-primary
+                                {% elif 'upload' in activity.action_type %}bg-warning
+                                {% else %}bg-secondary{% endif %}">
+                                {{ activity.action_type }}
+                            </span>
+                        </td>
+                        <td>{{ activity.details[:50] }}{% if activity.details|length > 50 %}...{% endif %}</td>
+                        <td>
+                            <span class="badge {% if activity.status == 'success' %}bg-success{% else %}bg-danger{% endif %}">
+                                {{ activity.status }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-4">
+            <i class="bi bi-activity display-4 text-muted"></i>
+            <p class="text-muted mt-3">No recent activities found.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+    <br>
+    <div class="text-left mb-4">
+            <a href="index.html" class="btn btn-primary">
+                <i class="bi bi-box-arrow-left me-2"></i>Logout
+        </a>
+        </div>
+    </div>
+ <!-- System Settings -->
     <div class="modal fade" id="systemSettingsModal" tabindex="-1">
             <div class="modal-dialog modal-lg">
                 <div class="modal-content">
@@ -181,80 +237,6 @@
             </div>
         </div>
     </div>
-
-    <div class="card shadow">
-        <div class="card-header bg-success text-white">
-            <h3 class="mb-0"><i class="bi bi-clipboard-data me-2"></i>Your recent activity</h3>
-        </div>
-        <div class="card-body">
-                <div class="row">
-                    <div class="col-md-8">
-                        <dl class="row">
-                            <dd class="col-sm-9">(Logging activity To be added)</dd>
-                        </dl>
-                </div>
-            </div>
-    </div>
-    </div>
-
-    <div class="card shadow">
-    <div class="card-header bg-success text-white">
-        <h3 class="mb-0"><i class="bi bi-clock-history me-2"></i>Your Recent Activity</h3>
-    </div>
-    <div class="card-body">
-        {% if activities %}
-        <div class="table-responsive">
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th>Time</th>
-                        <th>Action</th>
-                        <th>Details</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for activity in activities %}
-                    <tr>
-                        <td>{{ activity.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                        <td>
-                            <span class="badge 
-                                {% if activity.action_type == 'login' %}bg-success
-                                {% elif activity.action_type == 'logout' %}bg-info
-                                {% elif activity.action_type == 'register' %}bg-primary
-                                {% elif 'upload' in activity.action_type %}bg-warning
-                                {% else %}bg-secondary{% endif %}">
-                                {{ activity.action_type }}
-                            </span>
-                        </td>
-                        <td>{{ activity.details[:50] }}{% if activity.details|length > 50 %}...{% endif %}</td>
-                        <td>
-                            <span class="badge {% if activity.status == 'success' %}bg-success{% else %}bg-danger{% endif %}">
-                                {{ activity.status }}
-                            </span>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        {% else %}
-        <div class="text-center py-4">
-            <i class="bi bi-activity display-4 text-muted"></i>
-            <p class="text-muted mt-3">No recent activities found.</p>
-        </div>
-        {% endif %}
-    </div>
-</div>
-
-    <br>
-    <div class="text-left mb-4">
-            <a href="index.html" class="btn btn-primary">
-                <i class="bi bi-box-arrow-left me-2"></i>Logout
-        </a>
-        </div>
-    </div>
-
     <script>
         // Admin JavaScript functions
         function viewUser(userId) {
