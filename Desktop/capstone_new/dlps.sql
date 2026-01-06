@@ -20,6 +20,7 @@ CREATE TABLE File (
     original_filename VARCHAR(255) NOT NULL,  -- Original filename
     filetype VARCHAR(50) NOT NULL,  -- File type
     file_size BIGINT NOT NULL,    -- Original file size in bytes
+    file_data LONGBLOB NOT NULL,  -- Actual file data
     description TEXT,      -- 32-byte random
     shared_with TEXT,   -- 32-byte random
     upload_time DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -30,7 +31,6 @@ CREATE TABLE File (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE AuditLog (
-    __tablename__ = 'AuditLog',
     log_id INT PRIMARY KEY AUTO_INCREMENT,
     user_id INT,
     action_type VARCHAR(50) NOT NULL,  -- e.g., 'upload', 'delete', 'share'

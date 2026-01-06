@@ -33,13 +33,21 @@ class File(db.Model):
     original_filename = db.Column(db.String(200), nullable=False)
     filetype = db.Column(db.String(10), nullable=False)
     file_size = db.Column(db.Integer)
+    file_data = db.Column(db.LargeBinary)  # For storing the actual file
     description = db.Column(db.Text)
     shared_with = db.Column(db.String(255))
-    #filepath = db.Column(db.String(500), nullable=False)
     upload_time = db.Column(db.DateTime, default=datetime.utcnow)
     status = db.Column(db.String(50), default='pending')  # pending, scanned, flagged, safe
     sensitivity = db.Column(db.Integer)  # 1-10
-    action = db.Column(db.String(20))  # 'block', 'alert', 'quarantine', 'no action
+    action = db.Column(db.String(20))  # 'block', 'alert', 'quarantine', 'no action'
+
+class ShareFile(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    file_id = db.Column(db.Integer, db.ForeignKey('file.file_id'))
+    shared_with_user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
+    shared_by_user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
+    shared_at = db.Column(db.DateTime, default=datetime.utcnow)
+    permission = db.Column(db.String(50))  # read, write, comment
 
 class AuditLog(db.Model):
     __tablename__ = 'AuditLog'

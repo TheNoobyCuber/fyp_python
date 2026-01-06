@@ -38,11 +38,48 @@ def admin():
     registered_users = User.query.order_by(User.created_at.desc()).limit(5).all()
     return render_template('admin_dashboard.html', registered_users=registered_users, logs=admin_logs)
 
-@main.route('/files')
+@auth.route('/')
+def otp():
+    pass
+
+@main.route('/files', methods=['GET'])
 def view_files():
     """View all uploaded files"""
-    return render_template('files.html')
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('auth.login'))
+    
+    current_user = User.query.get(user_id)
+    current_user_fullname = current_user.fullname
+    files = File.query.filter_by(user_id=user_id).order_by(File.upload_time.desc()).all()
+    for file in files:
+        file.uploaded_by_username = current_user_fullname
+    return render_template('files.html', files=files, uploaded_by_username=current_user_fullname)
 
+@main.route('/files/<int:file_id>', methods=['GET'])
+def view_file(): #file_id should be an arguement, deploy later
+    """View a specific file's details"""
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('auth.login'))
+    
+    file = File.query.get()#file_id)
+    if file.user_id != user_id:
+        flash('File not found or access denied.', 'danger')
+        return redirect(url_for('main.view_files'))
+    
+    if file.filetype not in ALLOWED_FILE_EXTENSIONS:
+        flash('Cannot display this file type.', 'warning')
+        return redirect(url_for('main.view_files'))
+    
+    if file.filetype == '.txt':
+        file_content = file.file_data.decode('utf-8', errors='ignore')
+        return render_template('view_text_file.html', file=file, content=file_content)
+    else:
+        pass
+
+    return render_template('view_file.html', file=file, file_content=file.file_data)
+    
 @main.route('/upload', methods=['GET', 'POST'])
 def upload():
     try:   
@@ -73,43 +110,65 @@ def upload():
             user_id = session.get('user_id')
             unique_filename = f"{user_id}_{timestamp}_{original_filename}"
 
-            new_file = File(
-                user_id=user_id,
-                filename=unique_filename,
-                original_filename=original_filename,
-                filetype=filetype,
-                file_size=0,  # Placeholder for file size
-                description=description,
-                shared_with=shared_with,
-                status='pending',
-                sensitivity=5,
-                action='no action'
-            )
-            db.session.add(new_file)
-            db.session.commit()
+            #Read file data
+            file_data = file.read()
+            file_size = len(file_data)
 
-            # Logging the registration event
-            log = auditlog(
-                user_id=session['user_id'],
-                action_type='upload',
-                details='Successful file upload: ' + original_filename
-            )
-            db.session.add(log)
-            db.session.commit()
-    
-            print(f"File {original_filename} uploaded by user {user_id}")
-            flash(f'File "{original_filename}" uploaded successfully!', 'success')
-            return redirect(url_for('main.view_files'))
-    
-    except Exception as e:
-            print(f"\n=== DEBUG: ERROR ===")
-            print(f"Error: {type(e).__name__}: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            if file_size > 16 * 1024 * 1024:  # 16 MB limit
+                flash('File size exceeds the 16 MB limit. Please upload a smaller file.', 'danger')
+
+                log = auditlog(
+                    user_id=session['user_id'],
+                    action_type='upload',
+                    details='Failed file upload - file too large: ' + original_filename,
+                    status='failed'
+                )
+                db.session.add(log)
+                db.session.commit()
+                return render_template('uploadfile.html', shared_with=shared_with, 
+                                       description=description)
             
-            db.session.rollback()
-            flash(f'Error uploading file: {str(e)}', 'danger')
-            return redirect(request.url)
+            else:
+               
+
+                new_file = File(
+                    user_id=user_id,
+                    filename=unique_filename,
+                    original_filename=original_filename,
+                    filetype=filetype,
+                    file_size=file_size,  # Placeholder for file size
+                    file_data=file_data,
+                    description=description,
+                    shared_with=shared_with,
+                    status='pending',
+                    sensitivity=5,
+                    action='no action'
+                )
+                db.session.add(new_file)
+                db.session.commit()
+
+                # Logging the registration event
+                log = auditlog(
+                    user_id=session['user_id'],
+                    action_type='upload',
+                    details='Successful file upload: ' + original_filename
+                )
+                db.session.add(log)
+                db.session.commit()
+        
+                print(f"File {original_filename} uploaded by user {user_id}")
+                flash(f'File "{original_filename}" uploaded successfully!', 'success')
+                return redirect(url_for('main.view_files'))
+        
+    except Exception as e:
+        print(f"\n=== DEBUG: ERROR ===")
+        print(f"Error: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        db.session.rollback()
+        flash(f'Error uploading file: {str(e)}', 'danger')
+        return redirect(request.url)
 
     """Upload file page"""
     return render_template('uploadfile.html')
@@ -140,8 +199,7 @@ def login():
             flash('Login successful!', 'success')
 
             if user.is_admin:
-
-                # Logging the registration event
+                # Logging the login event for admin
                 log = auditlog(
                     user_id=session['user_id'],
                     action_type='admin login',
@@ -153,7 +211,7 @@ def login():
                 return redirect('/admin_dashboard')  # Or your admin route
 
             else:
-                # Logging the registration event
+                # Logging the login event for regular user
                 log = auditlog(
                     user_id=session['user_id'],
                     action_type='login',
@@ -193,7 +251,7 @@ def register():
             if position is None or position.strip() == '':
                 raise ValidationError('Please fill in your position.')
             
-            if position not in ['Employee', 'Manager', 'Admin']:
+            if position not in ['Employee', 'Manager']:
                 raise ValidationError('Invalid position. Please choose a valid position.')
             
             # Checking if the username is already taken
@@ -229,9 +287,6 @@ def register():
             )
             db.session.add(log)
             db.session.commit()
-            
-            # Clearing the OTP session data
-            # session.pop('registration_otp', None)
             
             flash('Account created successfully! You can now login.', 'success')
             return redirect(url_for('auth.login'))
