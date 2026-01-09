@@ -31,6 +31,14 @@ def admin():
         return redirect(url_for('auth.login'))
     if user_id and not session.get('is_admin'):
         flash('Access denied: Admins only', 'danger')
+        log = auditlog(
+            user_id=session['user_id'],
+            action_type='login attempt',
+            details='Unauthorized admin dashboard access attempt',
+            status='failed'
+        )
+        db.session.add(log)
+        db.session.commit()
         return redirect(url_for('auth.login'))
     
     """Admin dashboard - shows after admin login"""
@@ -95,7 +103,7 @@ def upload():
 
             def get_file_extension(filename):
                 """Extract file extension including the dot"""
-                if '.' in original_filename:
+                if '.' in filename:
                     return '.' + filename.rsplit('.', 1)[1].lower()
                 return ''
             
@@ -129,8 +137,6 @@ def upload():
                                        description=description)
             
             else:
-               
-
                 new_file = File(
                     user_id=user_id,
                     filename=unique_filename,
@@ -145,9 +151,8 @@ def upload():
                     action='no action'
                 )
                 db.session.add(new_file)
-                db.session.commit()
 
-                # Logging the registration event
+                # Logging the upload event
                 log = auditlog(
                     user_id=session['user_id'],
                     action_type='upload',
@@ -192,7 +197,19 @@ def login():
             flash('Invalid username or password', 'danger')
             return render_template('login.html', username=username)
         
-        if user and user.check_password(password):
+        elif user and user.check_password(password) == False:
+            log = auditlog(
+                user_id=user.id,
+                action_type='login attempt',
+                details='Failed login attempt for username: ' + username,
+                status='failed'
+            )
+            db.session.add(log)
+            db.session.commit()
+            flash('Invalid username or password', 'danger')
+            return render_template('login.html', username=username)
+        
+        else:
             session['user_id'] = user.id
             session['username'] = user.username
             session['is_admin'] = user.is_admin
@@ -220,9 +237,6 @@ def login():
                 db.session.add(log)
                 db.session.commit()
                 return redirect(url_for('main.index'))  # Regular user dashboard
-        else:
-            flash('Invalid username or password', 'danger')
-            return render_template('login.html', username=username)
         
     
     return render_template('login.html')
