@@ -81,4 +81,29 @@
 </div>
 
 </body>
+<script>
+    function sendOTP() {
+        const email = document.getElementById('email').value;
+        fetch('{{ url_for("auth.send_otp") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email: email })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('OTP sent, please check your email!');
+                document.getElementById('otp-section').style.display = 'block';
+            } else {
+                alert('Error sending OTP: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred.');
+        });
+    }
+</script>
 </html>

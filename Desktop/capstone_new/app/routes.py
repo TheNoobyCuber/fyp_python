@@ -1,16 +1,36 @@
-import email
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, jsonify
+from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.exc import SQLAlchemyError
 from wtforms import ValidationError
 # from app import AuditLog
 from .models import AuditLog, File, User, db
 from datetime import datetime
 import time
-import random
+import random 
+from flask_mail import Mail, Message
 
 ALLOWED_FILE_EXTENSIONS = ['.txt', '.pdf', '.doc', '.docx', '.xls', '.xlsx']
 auth = Blueprint('auth', __name__)
 main = Blueprint('main', __name__)
+
+@auth.route('/send_otp', methods=['POST'])
+def send_otp():
+    mail = Mail()
+    otp = random.randint(100000, 999999)
+    data = request.get_json()
+    email = data['email']
+
+    try:
+        msg = Message(
+            'Your OTP Verification Code',
+            sender=current_app.config.get('MAIL_DEFAULT_SENDER', 'noreply@yourdomain.com'),
+            recipients=[email]
+        )
+        msg.body = f'Your verification code is: {otp}\nThis code will expire in 10 minutes.'
+        mail.send(msg)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
 
 @main.route('/dashboard')
 def index():
