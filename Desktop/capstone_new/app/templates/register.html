@@ -52,7 +52,7 @@
                                 <label for="otp" class="form-label">Verification Code</label>
                                 <input type="text" class="form-control" id="otp" name="otp" 
                                     placeholder="Enter 6-digit code">
-                                <small class="form-text text-muted">Enter the verification code sent to your email</small>
+                                <small class="form-text text-muted">Enter the 6 digit verification code sent to your email</small>
                             </div>
                             <div class="mb-3">
                                 <label for="password" class="form-label">Password</label>
@@ -84,12 +84,13 @@
 <script>
     function sendOTP() {
         const email = document.getElementById('email').value;
+        const username = document.getElementById('username').value;
         fetch('{{ url_for("auth.send_otp") }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ email: email })
+            body: JSON.stringify({ email: email, username: username })
         })
         .then(response => response.json())
         .then(data => {

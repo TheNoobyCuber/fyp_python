@@ -17,6 +17,8 @@ class User(db.Model):
     password = db.Column('password', db.String(255), nullable=False)
     #password_hash = db.Column(db.String(200))
     position = db.Column(db.String(50), nullable=False)  # Employee, Manager, Admin
+    otp = db.Column(db.String(6), nullable=False)
+    otp_expiry = db.Column(db.DateTime, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_admin = db.Column(db.Boolean, default=False)
 

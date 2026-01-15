@@ -2,10 +2,8 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.exc import SQLAlchemyError
 from wtforms import ValidationError
-# from app import AuditLog
 from .models import AuditLog, File, User, db
-from datetime import datetime
-import time
+from datetime import datetime, timedelta
 import random 
 from flask_mail import Mail, Message
 
@@ -15,12 +13,33 @@ main = Blueprint('main', __name__)
 
 @auth.route('/send_otp', methods=['POST'])
 def send_otp():
-    mail = Mail()
-    otp = random.randint(100000, 999999)
     data = request.get_json()
-    email = data['email']
+    print(f"DEBUG: Received data: {data}")  # Add this line
+    email = data.get('email')
+    username = data.get('username')
 
+    if not email or not username:
+        return jsonify({'success': False, 'message': 'Email and username are required'})
+    
+    # Checking if the username is already taken
+    if User.query.filter_by(username=username).first():
+        return jsonify({'success': False, 'message': 'Username is already taken'})
+    
+    if User.query.filter_by(email=email).first():
+        return jsonify({'success': False, 'message': 'Email is already registered'})
+    
+    otp = random.randint(100000, 999999)
+    expire_time = str(datetime.utcnow() + timedelta(minutes=10))
+    session['reg_otp'] = {
+        'email': email,
+        'username': username,
+        'otp': otp,
+        'expire_time': expire_time
+    }
     try:
+        mail = current_app.extensions.get('mail')
+        # if not mail:
+        #     return jsonify({'success': False, 'message': 'Mail service not configured'})
         msg = Message(
             'Your OTP Verification Code',
             sender=current_app.config.get('MAIL_DEFAULT_SENDER', 'noreply@yourdomain.com'),
@@ -31,6 +50,7 @@ def send_otp():
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
+
 
 @main.route('/dashboard')
 def index():
@@ -65,10 +85,6 @@ def admin():
     admin_logs = AuditLog.query.filter_by(user_id=user_id).order_by(AuditLog.timestamp.desc()).limit(20).all()
     registered_users = User.query.order_by(User.created_at.desc()).limit(5).all()
     return render_template('admin_dashboard.html', registered_users=registered_users, logs=admin_logs)
-
-@auth.route('/')
-def otp():
-    pass
 
 @main.route('/files', methods=['GET'])
 def view_files():
@@ -271,7 +287,6 @@ def register():
             password = request.form.get('password')
             confirm_password = request.form.get('confirm_password')
             position = request.form.get('position')
-            #otp = request.form.get('otp')
                         
             # Checking and confirm password match
             if password != confirm_password:
@@ -298,12 +313,31 @@ def register():
                 raise ValidationError('Email is already registered. Please choose a different one.')
                 #return render_template('register.html', username=username, email=email)
             
+            # OTP verification
+
+            reg_otp = session.get('reg_otp', {})
+            stored_otp = reg_otp.get('otp')
+            stored_expire_time = reg_otp.get('expire_time')
+            stored_username = reg_otp.get('username')
+            stored_email = reg_otp.get('email')
+
+            if not stored_otp or not stored_expire_time or email != stored_email or username != stored_username:
+                raise ValidationError('Invalid OTP or mismatched email/username. Please request a new OTP.')
+            
+            if datetime.utcnow() > datetime.fromisoformat(stored_expire_time):
+                raise ValidationError('The OTP you filled in has expired. Please request for a new OTP.')
+            
+            if str(stored_otp) != str(request.form.get('otp')):
+                raise ValidationError('Incorrect OTP. Please try again.')
+                
             # Creating a new user
             new_user = User(
                 fullname=fullname, 
                 username=username, 
                 email=email, 
                 position=position,
+                otp =str(stored_otp),
+                otp_expiry=datetime.fromisoformat(stored_expire_time),
                 is_admin=False
             )
             new_user.set_password(password)
