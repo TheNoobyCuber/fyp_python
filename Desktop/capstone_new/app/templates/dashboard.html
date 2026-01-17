@@ -87,7 +87,9 @@
                                 {% if log.action_type == 'login' %}bg-success
                                 {% elif log.action_type == 'logout' %}bg-info
                                 {% elif log.action_type == 'register' %}bg-primary
-                                {% elif 'upload' in log.action_type %}bg-warning
+                                {% elif log.action_type == 'upload' %}bg-warning
+                                {% elif log.action_type == 'delete' %}bg-danger
+                                {% elif log.action_type == 'view file' %}bg-info
                                 {% else %}bg-secondary{% endif %}">
                                 {{ log.action_type }}
                             </span>

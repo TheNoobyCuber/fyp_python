@@ -1,4 +1,6 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, jsonify
+from importlib.resources import files
+import os
+from flask import Blueprint, app, render_template, request, redirect, send_from_directory, url_for, flash, session, current_app, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.exc import SQLAlchemyError
 from wtforms import ValidationError
@@ -86,6 +88,8 @@ def admin():
     registered_users = User.query.order_by(User.created_at.desc()).limit(5).all()
     return render_template('admin_dashboard.html', registered_users=registered_users, logs=admin_logs)
 
+
+
 @main.route('/files', methods=['GET'])
 def view_files():
     """View all uploaded files"""
@@ -98,16 +102,21 @@ def view_files():
     files = File.query.filter_by(user_id=user_id).order_by(File.upload_time.desc()).all()
     for file in files:
         file.uploaded_by_username = current_user_fullname
-    return render_template('files.html', files=files, uploaded_by_username=current_user_fullname)
+    return render_template('files.html', files=files)
 
-@main.route('/files/<int:file_id>', methods=['GET'])
-def view_file(): #file_id should be an arguement, deploy later
+@main.route('/view_file/<int:file_id>', methods=['GET'])
+def view_file(file_id): #file_id should be an arguement, deploy later
     """View a specific file's details"""
     user_id = session.get('user_id')
     if not user_id:
         return redirect(url_for('auth.login'))
     
-    file = File.query.get()#file_id)
+    file = File.query.get(file_id)
+    
+    if not file:
+        flash('File not found.', 'danger')
+        return redirect(url_for('main.view_files'))
+    
     if file.user_id != user_id:
         flash('File not found or access denied.', 'danger')
         return redirect(url_for('main.view_files'))
@@ -117,12 +126,24 @@ def view_file(): #file_id should be an arguement, deploy later
         return redirect(url_for('main.view_files'))
     
     if file.filetype == '.txt':
-        file_content = file.file_data.decode('utf-8', errors='ignore')
-        return render_template('view_text_file.html', file=file, content=file_content)
-    else:
-        pass
+        if hasattr(file, 'filepath') and os.path.exists(file.filepath):
+            with open(file.filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                file_content = f.read()
+        return render_template('view_file.html', file=file, file_id=file_id, content=file_content)
 
-    return render_template('view_file.html', file=file, file_content=file.file_data)
+    log = auditlog(
+        user_id=session['user_id'],
+        action_type='view file',
+        details=f'Viewed file ID: {file_id}, filename: {file.original_filename}'
+    )
+    db.session.add(log)
+    db.session.commit()
+
+    return render_template('view_file.html', file=file, file_id=file_id)
+
+@main.route('/edit_file/<int:file_id>', methods=['GET', 'POST'])
+def edit_file(file_id):
+    return render_template('edit_file.html', file_id=file_id)
     
 @main.route('/upload', methods=['GET', 'POST'])
 def upload():
@@ -149,18 +170,21 @@ def upload():
                 flash('File type not allowed. Please upload a valid file.', 'danger')
                 return render_template('uploadfile.html', shared_with=shared_with, description=description)
             
+            
             # Create unique filename
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             user_id = session.get('user_id')
             unique_filename = f"{user_id}_{timestamp}_{original_filename}"
 
+            file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
+
             #Read file data
-            file_data = file.read()
-            file_size = len(file_data)
+            file_size = os.path.getsize(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
 
             if file_size > 16 * 1024 * 1024:  # 16 MB limit
+                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
                 flash('File size exceeds the 16 MB limit. Please upload a smaller file.', 'danger')
-
+                
                 log = auditlog(
                     user_id=session['user_id'],
                     action_type='upload',
@@ -177,9 +201,9 @@ def upload():
                     user_id=user_id,
                     filename=unique_filename,
                     original_filename=original_filename,
+                    filepath= os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename),
                     filetype=filetype,
                     file_size=file_size,  # Placeholder for file size
-                    file_data=file_data,
                     description=description,
                     shared_with=shared_with,
                     status='pending',
@@ -197,7 +221,6 @@ def upload():
                 db.session.add(log)
                 db.session.commit()
         
-                print(f"File {original_filename} uploaded by user {user_id}")
                 flash(f'File "{original_filename}" uploaded successfully!', 'success')
                 return redirect(url_for('main.view_files'))
         

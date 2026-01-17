@@ -38,8 +38,14 @@
                         <td>{{ file.uploaded_by_username }}</td>
                         <td>{{ file.upload_time }}</td>
                         <td>                            
-                            <a href="{{ url_for('main.view_files') }}" class="btn btn-primary bi bi-eye">View</a>
-                            <a href="{{ url_for('main.view_files') }}" class="btn btn-secondary bi bi-pencil">Edit</a>
+                            <a href="{{ url_for('main.view_file', file_id=file.file_id) }}" 
+                                class="btn btn-primary bi bi-eye"> View</a>
+                            <a href="{{ url_for('main.edit_file', file_id=file.file_id) }}" 
+                            class="btn btn-secondary bi bi-pencil"> Edit</a>
+                            <a href="{{ url_for('main.edit_file', file_id=file.file_id) }}" 
+                            class="btn btn-success bi bi-share"> Share</a>
+                            <a href="{{ url_for('main.edit_file', file_id=file.file_id) }}" 
+                            class="btn btn-danger bi bi-trash"> Delete</a>
                         </td>
                     </tr>
                     {% endfor %}
@@ -53,7 +59,6 @@
             </div>
         </div>
     </div>
-<br>
     <a href='{{ url_for("main.index") }}'><button type='button' class='btn btn-secondary'>Back to Dashboard</button></a>
 
 </body>

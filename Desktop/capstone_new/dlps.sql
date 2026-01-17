@@ -20,9 +20,9 @@ CREATE TABLE File (
     user_id INT NOT NULL,
     filename VARCHAR(255) NOT NULL,     
     original_filename VARCHAR(255) NOT NULL,  -- Original filename
+    filepath VARCHAR(500) NOT NULL,  -- Path where the file is stored
     filetype VARCHAR(50) NOT NULL,  -- File type
     file_size BIGINT NOT NULL,    -- Original file size in bytes
-    file_data LONGBLOB NOT NULL,  -- Actual file data
     description TEXT,      -- 32-byte random
     shared_with TEXT,   -- 32-byte random
     upload_time DATETIME DEFAULT CURRENT_TIMESTAMP,

@@ -33,7 +33,7 @@ def create_app():
     app.config['SQLALCHEMY_ECHO'] = True  # Set to True to see SQL queries
 
     #Upload folder configuration
-    app.config['UPLOAD_FOLDER'] = 'app/static/uploads/'
+    app.config['UPLOAD_FOLDER'] = 'app/secure_uploads/'
 
     #Mail configuration 
     app.config['MAIL_SERVER'] = 'smtp.gmail.com'

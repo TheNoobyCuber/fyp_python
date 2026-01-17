@@ -33,9 +33,9 @@ class File(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
     filename = db.Column(db.String(200), nullable=False)
     original_filename = db.Column(db.String(200), nullable=False)
+    filepath = db.Column(db.String(500), nullable=False)  # Path where the file is stored
     filetype = db.Column(db.String(10), nullable=False)
     file_size = db.Column(db.Integer)
-    file_data = db.Column(db.LargeBinary)  # For storing the actual file
     description = db.Column(db.Text)
     shared_with = db.Column(db.String(255))
     upload_time = db.Column(db.DateTime, default=datetime.utcnow)
