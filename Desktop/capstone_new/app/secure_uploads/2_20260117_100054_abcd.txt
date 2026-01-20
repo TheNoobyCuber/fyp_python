@@ -1,3 +1,0 @@
-Order Number 	 Start Date 	 End Date 	 Product Name 	 Quantity 	 Plant 	 Status
-P0001				2031-01-31					Product_A		2000			rejected
-P0002				2031-01-31					Product_D		3000			rejected

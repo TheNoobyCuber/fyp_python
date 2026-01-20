@@ -1,3 +1,4 @@
+from fileinput import filename
 from importlib.resources import files
 import os
 from flask import Blueprint, app, render_template, request, redirect, send_from_directory, url_for, flash, session, current_app, jsonify
@@ -89,7 +90,6 @@ def admin():
     return render_template('admin_dashboard.html', registered_users=registered_users, logs=admin_logs)
 
 
-
 @main.route('/files', methods=['GET'])
 def view_files():
     """View all uploaded files"""
@@ -105,7 +105,7 @@ def view_files():
     return render_template('files.html', files=files)
 
 @main.route('/view_file/<int:file_id>', methods=['GET'])
-def view_file(file_id): #file_id should be an arguement, deploy later
+def view_file(file_id):
     """View a specific file's details"""
     user_id = session.get('user_id')
     if not user_id:
@@ -143,7 +143,38 @@ def view_file(file_id): #file_id should be an arguement, deploy later
 
 @main.route('/edit_file/<int:file_id>', methods=['GET', 'POST'])
 def edit_file(file_id):
+
+    file = File.query.get(file_id)
+
+    log = auditlog(
+        user_id=session['user_id'],
+        action_type='edit file',
+        details=f'Edited file ID: {file_id}, filename: {file.original_filename}'
+    )
+    db.session.add(log)
+    db.session.commit()
+
     return render_template('edit_file.html', file_id=file_id)
+
+@main.route('/delete_file/<int:file_id>', methods=['GET', 'POST'])
+def delete_file(file_id):
+    file = File.query.get(file_id)
+    if file:
+        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename)
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+            db.session.delete(file)
+            log = auditlog(
+                user_id=session['user_id'],
+                action_type='delete file',
+                details=f'Deleted file ID: {file_id}, filename: {file.original_filename}'
+            )
+            db.session.add(log)
+            db.session.commit()
+
+            flash(f'File "{file.filename}" deleted successfully.', 'success')
+    return redirect(url_for('main.view_files'))
     
 @main.route('/upload', methods=['GET', 'POST'])
 def upload():
@@ -182,8 +213,8 @@ def upload():
             file_size = os.path.getsize(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
 
             if file_size > 16 * 1024 * 1024:  # 16 MB limit
-                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
                 flash('File size exceeds the 16 MB limit. Please upload a smaller file.', 'danger')
+                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
                 
                 log = auditlog(
                     user_id=session['user_id'],

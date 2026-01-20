@@ -52,4 +52,3 @@ def create_app():
     app.register_blueprint(main)
 
     return app
-# End of app/__init__.py

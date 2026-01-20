@@ -11,6 +11,16 @@
     <!-- Bootstrap JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script></head>
 <body>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
     <div class="card shadow">
         <div class="card-header bg-info text-white">
             <h3 class="mb-0"><i class="bi bi-person-circle me-2"></i>User Profile </h3>
@@ -88,8 +98,10 @@
                                 {% elif log.action_type == 'logout' %}bg-info
                                 {% elif log.action_type == 'register' %}bg-primary
                                 {% elif log.action_type == 'upload' %}bg-warning
-                                {% elif log.action_type == 'delete' %}bg-danger
-                                {% elif log.action_type == 'view file' %}bg-info
+                                {% elif log.action_type == 'delete file' %}bg-danger
+                                {% elif log.action_type == 'view file' %}bg-primary
+                                {% elif log.action_type == 'edit file' %}bg-secondary
+                                {% elif log.action_type == 'share file' %}bg-success
                                 {% else %}bg-secondary{% endif %}">
                                 {{ log.action_type }}
                             </span>
