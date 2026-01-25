@@ -69,6 +69,54 @@
             </div>
         </div>
     </div>
+
+    <div class="card shadow">
+        <div class="card-header bg-info text-white">
+            <h3 class="mb-0"><i class="bi bi-folder2-open me-2"></i>Files shared to you</h3>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+            <h1>Hello, this is the view files page!</h1>
+            <table class="table table-striped">
+                {% if shared_files %}
+                <thead>
+                    <tr>
+                        <th>File ID</th>
+                        <th>Filename</th>
+                        <th>Uploaded By</th>
+                        <th>Upload Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for file in shared_files %}
+                    <tr>
+                        <td>{{ file.file_id }}</td>
+                        <td>{{ file.original_filename }}</td>
+                        <td>{{ file.uploaded_by_username }}</td>
+                        <td>{{ file.upload_time }}</td>
+                        <td>                            
+                            <a href="{{ url_for('main.view_file', file_id=file.file_id) }}" 
+                                class="btn btn-primary bi bi-eye"> View</a>
+                            <a href="{{ url_for('main.edit_file', file_id=file.file_id) }}" 
+                            class="btn btn-secondary bi bi-pencil"> Edit</a>
+                            <a href="{{ url_for('main.edit_file', file_id=file.file_id) }}" 
+                            class="btn btn-success bi bi-share"> Share</a>
+                            <a href="{{ url_for('main.delete_file', file_id=file.file_id) }}" 
+                            class="btn btn-danger bi bi-trash"> Delete</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% else %}
+                <tr>
+                    <td colspan="4" class="text-center">No files shared to you yet.</td>
+                </tr>
+                {% endif %}
+            </table>
+            </div>
+        </div>
+    </div>
     <a href='{{ url_for("main.index") }}'><button type='button' class='btn btn-secondary'>Back to Dashboard</button></a>
 
 </body>

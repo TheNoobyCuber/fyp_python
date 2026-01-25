@@ -5,7 +5,7 @@ from flask import Blueprint, app, render_template, request, redirect, send_from_
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.exc import SQLAlchemyError
 from wtforms import ValidationError
-from .models import AuditLog, File, User, db
+from .models import AuditLog, File, ShareFile, User, db
 from datetime import datetime, timedelta
 import random 
 from flask_mail import Mail, Message
@@ -100,9 +100,19 @@ def view_files():
     current_user = User.query.get(user_id)
     current_user_fullname = current_user.fullname
     files = File.query.filter_by(user_id=user_id).order_by(File.upload_time.desc()).all()
+    shared_files_data = ShareFile.query.filter(ShareFile.shared_with_user_id == user_id).order_by(ShareFile.shared_at.desc()).all()
+    shared_files = []
+    for share in shared_files_data:
+        file = File.query.get(share.file_id)
+        if file:
+            shared_files.append(file)
+            
     for file in files:
         file.uploaded_by_username = current_user_fullname
-    return render_template('files.html', files=files)
+    for file in shared_files:
+        file.uploaded_by_username = User.query.get(file.user_id).username
+
+    return render_template('files.html', files=files, shared_files=shared_files)
 
 @main.route('/view_file/<int:file_id>', methods=['GET'])
 def view_file(file_id):
@@ -176,6 +186,50 @@ def delete_file(file_id):
             flash(f'File "{file.filename}" deleted successfully.', 'success')
     return redirect(url_for('main.view_files'))
     
+
+@main.route('/share', methods=['POST'])
+def share_file():
+    file_id = request.form.get('file_id')
+    file = File.query.get(file_id)
+    
+    if file:
+        try:
+            shared_with = request.form.get('shared_with')
+            shared_with_user = User.query.filter_by(username=shared_with).first() if shared_with else None
+            shared_with_user_id = shared_with_user.id if shared_with_user else None
+            description = request.form.get('description')
+            if not shared_with_user_id:
+                flash('User to share with not found.', 'danger')
+                return redirect(url_for('main.view_files'))
+            else:
+                file.shared_with_user_id = shared_with_user_id
+                file.shared_by_user_id = session['user_id']
+                description = description or ''
+                db.session.add(file)
+
+                log = auditlog( #Log the sharing action
+                    user_id=session['user_id'],
+                    action_type='share file',
+                    details=f'Shared file ID: {file_id}, filename: {file.original_filename} with users: {shared_with}'
+                )
+                share_file = ShareFile( #Add entry to ShareFile table
+                    file_id=file_id,
+                    shared_with_user_id=shared_with_user_id,
+                    shared_by_user_id=session['user_id'],
+                    description=description,
+                    shared_at=datetime.utcnow()
+                )
+                db.session.add(share_file)
+                db.session.add(log)
+                db.session.commit()
+
+                flash(f'File "{file.original_filename}" shared successfully.', 'success')
+            return redirect(url_for('main.view_files'))
+        except Exception as e:
+            flash(f'Error sharing file: {str(e)}', 'danger')
+            return redirect(url_for('main.index'))
+        
+    
 @main.route('/upload', methods=['GET', 'POST'])
 def upload():
     try:   
@@ -186,6 +240,8 @@ def upload():
                 return render_template('uploadfile.html')
             description = request.form.get('description')
             shared_with = request.form.get('shared_with')  # Comma-separated user IDs
+            shared_with_user = User.query.filter_by(username=shared_with).first() if shared_with else None
+            shared_with_user_id = shared_with_user.id if shared_with_user else None
 
             original_filename = file.filename
 
@@ -201,7 +257,11 @@ def upload():
                 flash('File type not allowed. Please upload a valid file.', 'danger')
                 return render_template('uploadfile.html', shared_with=shared_with, description=description)
             
-            
+            if not shared_with:
+                flash('Please specify at least one user to share the file with.', 'danger')
+                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
+                return render_template('uploadfile.html', shared_with=shared_with, 
+                                       description=description)
             # Create unique filename
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             user_id = session.get('user_id')
@@ -227,6 +287,7 @@ def upload():
                 return render_template('uploadfile.html', shared_with=shared_with, 
                                        description=description)
             
+              
             else:
                 new_file = File(
                     user_id=user_id,
@@ -242,6 +303,16 @@ def upload():
                     action='no action'
                 )
                 db.session.add(new_file)
+                db.session.flush()  # Get new_file.file_id before commit
+
+                share_file = ShareFile( #Add entry to ShareFile table
+                    file_id=new_file.file_id,
+                    shared_with_user_id=shared_with_user_id,
+                    shared_by_user_id=session['user_id'],
+                    description=description,
+                    shared_at=datetime.utcnow()
+                )
+                db.session.add(share_file)
 
                 # Logging the upload event
                 log = auditlog(

@@ -42,6 +42,18 @@ CREATE TABLE AuditLog (
     FOREIGN KEY (user_id) REFERENCES User(ID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE ShareFile (
+    share_id INT PRIMARY KEY AUTO_INCREMENT,
+    file_id INT,
+    shared_with_user_id INT,
+    shared_by_user_id INT,
+    shared_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    description TEXT,
+    FOREIGN KEY (file_id) REFERENCES `File`(file_id) ON DELETE CASCADE,
+    FOREIGN KEY (shared_with_user_id) REFERENCES User(ID) ON DELETE CASCADE,
+    FOREIGN KEY (shared_by_user_id) REFERENCES User(ID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Insert admin user
 -- Note: This uses a pre-hashed password for 'admin'
 -- username: admin, password: 123

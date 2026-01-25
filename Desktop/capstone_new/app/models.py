@@ -29,6 +29,7 @@ class User(db.Model):
         return check_password_hash(self.password, password)
     
 class File(db.Model):
+    __tablename__ = 'File'
     file_id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
     filename = db.Column(db.String(200), nullable=False)
@@ -44,12 +45,13 @@ class File(db.Model):
     action = db.Column(db.String(20))  # 'block', 'alert', 'quarantine', 'no action'
 
 class ShareFile(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    file_id = db.Column(db.Integer, db.ForeignKey('file.file_id'))
+    __tablename__ = 'ShareFile'
+    share_id = db.Column(db.Integer, primary_key=True)
+    file_id = db.Column(db.Integer, db.ForeignKey('File.file_id'))
     shared_with_user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
     shared_by_user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
     shared_at = db.Column(db.DateTime, default=datetime.utcnow)
-    permission = db.Column(db.String(50))  # read, write, comment
+    description = db.Column(db.Text)
 
 class AuditLog(db.Model):
     __tablename__ = 'AuditLog'
