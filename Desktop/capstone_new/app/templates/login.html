@@ -24,11 +24,11 @@
     {% endwith %}
     <div>
         <form method="post" action="{{ url_for('auth.login') }}">
-            <div class="container py-5">
+            <div class="container">
                 <div class="row">
-                    <div class="card shadow-lg">
-                        <div class="col-md-8 offset-md-2">
-                            <div class="login-header bg-primary text-white text-center mb-2">
+                    <div class="card shadow-lg mx-auto" style="max-width: 1000px;">
+                        <div>
+                            <div class="login-header bg-primary text-white text-center py-4 mb-4">
                                 <div class="display-4">
                                     <h2><i class="fas fa-lock me-2"></i>Welcome Back</h2>
                                     <p class="mb-0 mt-2">Please login to your account</p>

@@ -531,7 +531,5 @@ def auditlog(user_id, action_type, details='', status='success'):
 
 @main.route('/view_audit_logs')
 def view_audit_logs():
-    user_id = session.get('user_id')
-    user = User.query.get(user_id)
-    logs = AuditLog.query.filter_by(user_id=user_id).order_by(AuditLog.timestamp.desc()).all()
-    return render_template('audit_logs.html', user=user, logs=logs)
+    logs = AuditLog.query.order_by(AuditLog.timestamp.desc()).all()
+    return render_template('audit_logs.html', logs=logs)
