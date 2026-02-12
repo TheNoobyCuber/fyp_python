@@ -1,7 +1,7 @@
 from fileinput import filename
 from importlib.resources import files
 import os
-from flask import Blueprint, app, render_template, request, redirect, send_from_directory, url_for, flash, session, current_app, jsonify
+from flask import Blueprint, app, render_template, request, redirect, send_from_directory, url_for, flash, session, current_app, jsonify, make_response
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.exc import SQLAlchemyError
 from wtforms import ValidationError
@@ -9,6 +9,7 @@ from .models import AuditLog, File, ShareFile, User, db
 from datetime import datetime, timedelta
 import random 
 from flask_mail import Mail, Message
+from pypdf import PdfReader
 
 ALLOWED_FILE_EXTENSIONS = ['.txt', '.pdf', '.doc', '.docx', '.xls', '.xlsx']
 auth = Blueprint('auth', __name__)
@@ -65,7 +66,17 @@ def index():
     user = User.query.get(user_id)
     username = User.query.with_entities(User.username).filter_by(id=user_id).first().username
     logs = AuditLog.query.filter_by(user_id=user_id).order_by(AuditLog.timestamp.desc()).limit(20).all()
-    return render_template('dashboard.html', user=user, username=username, logs=logs)
+
+    # Create response with no-cache headers
+    response = make_response(render_template('dashboard.html', user=user, username=username, logs=logs))
+    
+    # Add headers to prevent caching
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, private'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    
+    return response
+    #return render_template('dashboard.html', user=user, username=username, logs=logs)
 
 @main.route('/admin_dashboard')
 def admin():
@@ -128,19 +139,15 @@ def view_file(file_id):
         return redirect(url_for('main.view_files'))
     
     if file.user_id != user_id:
-        flash('File not found or access denied.', 'danger')
-        return redirect(url_for('main.view_files'))
+        shared_file = ShareFile.query.filter_by(file_id=file_id, shared_with_user_id=user_id).first()
+        if not shared_file:
+            flash('Access denied.', 'danger')
+            return redirect(url_for('main.view_files'))
     
     if file.filetype not in ALLOWED_FILE_EXTENSIONS:
         flash('Cannot display this file type.', 'warning')
         return redirect(url_for('main.view_files'))
     
-    if file.filetype == '.txt':
-        if hasattr(file, 'filepath') and os.path.exists(file.filepath):
-            with open(file.filepath, 'r', encoding='utf-8', errors='ignore') as f:
-                file_content = f.read()
-        return render_template('view_file.html', file=file, file_id=file_id, content=file_content)
-
     log = auditlog(
         user_id=session['user_id'],
         action_type='view file',
@@ -148,8 +155,48 @@ def view_file(file_id):
     )
     db.session.add(log)
     db.session.commit()
+    
+    
+    if file.filetype == '.txt':
+        if hasattr(file, 'filepath') and os.path.exists(file.filepath):
+            with open(file.filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                file_content = f.read()
+        return render_template('view_file.html', file=file, file_id=file_id, content=file_content)
 
     return render_template('view_file.html', file=file, file_id=file_id)
+
+@main.route('/serve_file/<int:file_id>', methods=['GET'])
+def serve_file(file_id):
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('auth.login'))
+    file = File.query.get(file_id)
+    if not file:
+        flash('File not found.', 'danger')
+        return redirect(url_for('main.view_files'))
+    if file.user_id != user_id:
+        shared_file = ShareFile.query.filter_by(file_id=file_id, shared_with_user_id=user_id).first()
+        if not shared_file:
+            flash('Access denied.', 'danger')
+            return redirect(url_for('main.view_files'))
+    
+    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename)
+
+    if not os.path.exists(file_path):
+        # flash('File not found.', 'danger')
+        # return redirect(url_for('main.view_files'))
+        print(f"File not found at path: {file_path}")  # Debug logging
+        flash('File not found on server.', 'danger')
+        return redirect(url_for('main.view_files'))
+    try:
+        if file.filetype == '.pdf':
+            return send_from_directory(current_app.config['UPLOAD_FOLDER'], file.filename, as_attachment=False, mimetype='application/pdf')
+        else:
+            return send_from_directory(current_app.config['UPLOAD_FOLDER'], file.filename, as_attachment=True)
+    except Exception as e:
+        print(f"Error serving file: {e}")
+        flash(f'Error serving file: {str(e)}', 'danger')
+        return redirect(url_for('main.view_files'))
 
 @main.route('/edit_file/<int:file_id>', methods=['GET', 'POST'])
 def edit_file(file_id):
@@ -205,13 +252,7 @@ def share_file():
                 file.shared_with_user_id = shared_with_user_id
                 file.shared_by_user_id = session['user_id']
                 description = description or ''
-                db.session.add(file)
-
-                log = auditlog( #Log the sharing action
-                    user_id=session['user_id'],
-                    action_type='share file',
-                    details=f'Shared file ID: {file_id}, filename: {file.original_filename} with users: {shared_with}'
-                )
+                
                 share_file = ShareFile( #Add entry to ShareFile table
                     file_id=file_id,
                     shared_with_user_id=shared_with_user_id,
@@ -220,11 +261,22 @@ def share_file():
                     shared_at=datetime.utcnow()
                 )
                 db.session.add(share_file)
-                db.session.add(log)
-                db.session.commit()
+                print(f"✓ ShareFile entry added to session")
 
-                flash(f'File "{file.original_filename}" shared successfully.', 'success')
-            return redirect(url_for('main.view_files'))
+                log = auditlog( #Log the sharing action
+                    user_id=session['user_id'],
+                    action_type='share file',
+                    details=f'Shared file ID: {file_id}, filename: {file.original_filename} with users: {shared_with}'
+                )
+                db.session.add(log)
+                print(f"✓ AuditLog entry added to session")
+
+                print(f"Attempting to commit...")
+                db.session.commit()
+                print(f"✓ Session committed successfully.")
+
+                flash(f'File "{file.original_filename}" shared successfully with {shared_with}.', 'success')
+            return redirect(url_for('main.index'))
         except Exception as e:
             flash(f'Error sharing file: {str(e)}', 'danger')
             return redirect(url_for('main.index'))
@@ -321,10 +373,17 @@ def upload():
                     details='Successful file upload: ' + original_filename
                 )
                 db.session.add(log)
+
+                log2 = auditlog( #Log the sharing action
+                    user_id=session['user_id'],
+                    action_type='share file',
+                    details=f'Shared file ID: {new_file.file_id}, filename: {original_filename} with users: {shared_with}'
+                )
+                db.session.add(log2)
                 db.session.commit()
         
                 flash(f'File "{original_filename}" uploaded successfully!', 'success')
-                return redirect(url_for('main.view_files'))
+                return redirect(url_for('main.index'))
         
     except Exception as e:
         print(f"\n=== DEBUG: ERROR ===")

@@ -9,8 +9,6 @@ WTForms==3.1.2
 
 # Database driver (choose one)
 pymysql==1.0.3      # For MySQL
-# psycopg2-binary==2.9.7  # For PostgreSQL
-# sqlite3               # Built-in for SQLite
 
 # Security
 cryptography==41.0.4
@@ -18,7 +16,7 @@ bcrypt==4.0.1
 
 # File processing
 python-magic==0.4.27
-PyPDF2==3.0.1
+pypdf-6.6.2
 
 # Pattern matching
 regex==2023.6.3

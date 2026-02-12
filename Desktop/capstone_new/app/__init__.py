@@ -33,7 +33,8 @@ def create_app():
     app.config['SQLALCHEMY_ECHO'] = True  # Set to True to see SQL queries
 
     #Upload folder configuration
-    app.config['UPLOAD_FOLDER'] = 'app/secure_uploads/'
+    app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)),  'secure_uploads/')
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
     #Mail configuration 
     app.config['MAIL_SERVER'] = 'smtp.gmail.com'
