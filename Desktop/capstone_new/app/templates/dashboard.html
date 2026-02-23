@@ -101,10 +101,12 @@
                                 {% elif log.action_type == 'logout' %}bg-info
                                 {% elif log.action_type == 'register' %}bg-primary
                                 {% elif log.action_type == 'upload' %}bg-warning
+                                {% elif log.action_type == 'recycle file' %}bg-warning
                                 {% elif log.action_type == 'delete file' %}bg-danger
                                 {% elif log.action_type == 'view file' %}bg-primary
                                 {% elif log.action_type == 'edit file' %}bg-secondary
-                                {% elif log.action_type == 'share file' %}bg-success
+                                {% elif log.action_type == 'share file'  %}bg-success
+                                {% elif log.action_type == 'restore file' %}bg-success
                                 {% elif log.action_type == 'view admin audit logs' %}bg-danger
                                 {% else %}bg-secondary{% endif %}">
                                 {{ log.action_type }}

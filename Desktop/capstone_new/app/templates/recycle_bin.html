@@ -50,7 +50,7 @@
                         <td>{{ item.deleted_by_user_id }}</td>
                         <td>{{ item.deleted_at.strftime('%Y-%m-%d %H:%M:%S') if item.deleted_at else 'N/A' }}</td>
                         <td>                            
-                            <a href="{{ url_for('main.restore_file', file_id=item.delete_id) }}" 
+                            <a href="{{ url_for('main.restore_file', file_id=item.file_id) }}" 
                             class="btn btn-success bi bi-heart"> Restore</a>
                             <a href="{{ url_for('main.delete_file', file_id=item.file_id) }}" 
                             class="btn btn-danger bi bi-trash"> Delete Permanently</a>

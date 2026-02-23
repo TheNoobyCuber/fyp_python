@@ -218,12 +218,15 @@ def edit_file(file_id):
 @main.route('/delete_file/<int:file_id>', methods=['GET', 'POST'])
 def delete_file(file_id):
     file = File.query.get(file_id)
+    recycle_entry = RecycleBin.query.filter_by(file_id=file_id).first()
     if file:
         filepath = os.path.join(current_app.config['RECYCLE_BIN_FOLDER'], file.filename)
         if os.path.exists(filepath):
             os.remove(filepath)
 
             db.session.delete(file)
+            db.session.delete(recycle_entry)
+
             log = auditlog(
                 user_id=session['user_id'],
                 action_type='delete file',
@@ -247,7 +250,7 @@ def recycle():
 
         log = auditlog(
             user_id=session['user_id'],
-            action_type='move to recycle bin',
+            action_type='recycle file',
             details=f'Moved file ID: {file_id}, filename: {file.original_filename} to recycle bin'
         )
         db.session.add(log)
@@ -264,6 +267,7 @@ def recycle():
         flash(f'File "{file.filename}" moved to recycle bin.', 'success')
     return redirect(url_for('main.view_files'))
 
+@main.route('/restore/<int:file_id>', methods=['GET'])
 def restore_file(file_id):
     file = File.query.get(file_id)
     if file:
@@ -274,7 +278,7 @@ def restore_file(file_id):
 
         log = auditlog(
             user_id=session['user_id'],
-            action_type='Restore',
+            action_type='restore file',
             details=f'Restored file ID: {file_id}, filename: {file.original_filename}'
         )
         db.session.add(log)

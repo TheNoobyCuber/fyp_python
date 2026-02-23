@@ -58,7 +58,10 @@
                             <option value="view file" {% if request.args.get('action_type') == 'view file' %}selected{% endif %}>view file</option>
                             <option value="edit file" {% if request.args.get('action_type') == 'edit file' %}selected{% endif %}>edit file</option>
                             <option value="share file" {% if request.args.get('action_type') == 'share file' %}selected{% endif %}>share file</option>
+                            <option value="recycle file" {% if request.args.get('action_type') == 'recycle file' %}selected{% endif %}>recycle file</option>
+                            <option value="restore file" {% if request.args.get('action_type') == 'restore file' %}selected{% endif %}>restore file</option>
                             <option value="delete file" {% if request.args.get('action_type') == 'delete file' %}selected{% endif %}>delete file</option>
+                            <option value="view admin audit logs" {% if request.args.get('action_type') == 'view admin audit logs' %}selected{% endif %}>view admin audit logs</option>
                         </select>
                     </div>
                     <div class="col-md-4">
@@ -168,33 +171,3 @@
 
 </body>
 </html>
-
-<script>
-    document.querySelector('#filter_by').addEventListener('change', showFilterOptions);
-
-    function showFilterOptions() {
-        var filterBy = document.getElementById('filter_by').value;
-
-        const tableRows = document.querySelectorAll('#table tr');
-
-        if (filterBy === 'user_id' || filterBy === 'timestamp' || filterBy === 'action_type' || filterBy === 'status') {
-            document.getElementById(filterBy).style.display = 'inline-block';
-        } else {
-            document.getElementById('userid').style.display = 'none';
-            document.getElementById('timestamp').style.display = 'none';
-            document.getElementById('action_type').style.display = 'none';
-            document.getElementById('status').style.display = 'none';
-        }
-            
-        tableRows.forEach((row, index) => {
-            if (index === 0) return;
-
-            var cellValue = row.cells[0].textContent.toLowerCase();
-            if (cellValue.includes(filterBy.toLowerCase())) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            }
-        )};
-</script>
