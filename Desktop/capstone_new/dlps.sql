@@ -26,7 +26,7 @@ CREATE TABLE File (
     description TEXT,      -- 32-byte random
     shared_with TEXT,   -- 32-byte random
     upload_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-    status VARCHAR(50) DEFAULT 'pending', -- pending, scanned, flagged, safe
+    status VARCHAR(50) DEFAULT 'pending', -- pending, scanned, flagged, safe, recycle_bin
     sensitivity INT,  -- 1-10
     action VARCHAR(50),  -- e.g., 'block', 'quarantine', 'alert'
     FOREIGN KEY (user_id) REFERENCES User(ID) ON DELETE CASCADE
@@ -52,6 +52,16 @@ CREATE TABLE ShareFile (
     FOREIGN KEY (file_id) REFERENCES `File`(file_id) ON DELETE CASCADE,
     FOREIGN KEY (shared_with_user_id) REFERENCES User(ID) ON DELETE CASCADE,
     FOREIGN KEY (shared_by_user_id) REFERENCES User(ID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE RecycleBin (
+    delete_id INT PRIMARY KEY AUTO_INCREMENT,
+    file_id INT,
+    filename VARCHAR(255) NOT NULL,  -- Store the filename for display in recycle bin
+    deleted_by_user_id INT,
+    deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (file_id) REFERENCES File(file_id) ON DELETE CASCADE,
+    FOREIGN KEY (deleted_by_user_id) REFERENCES User(ID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Insert admin user

@@ -53,6 +53,14 @@ class ShareFile(db.Model):
     shared_at = db.Column(db.DateTime, default=datetime.utcnow)
     description = db.Column(db.Text)
 
+class RecycleBin(db.Model):
+    __tablename__ = 'RecycleBin'
+    delete_id = db.Column(db.Integer, primary_key=True)
+    file_id = db.Column(db.Integer, db.ForeignKey('File.file_id'))
+    filename = db.Column(db.String(200), nullable=False)
+    deleted_by_user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
+    deleted_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 class AuditLog(db.Model):
     __tablename__ = 'AuditLog'
     log_id = db.Column(db.Integer, primary_key=True)
@@ -61,7 +69,6 @@ class AuditLog(db.Model):
     details = db.Column(db.Text)  # Additional details about the action
     status = db.Column(db.String(50), default='success')  # success, failed
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-        
 
 class DlpPolicy(db.Model):
     id = db.Column(db.Integer, primary_key=True)

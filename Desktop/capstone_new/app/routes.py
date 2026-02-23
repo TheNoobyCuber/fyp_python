@@ -6,7 +6,7 @@ from flask_sqlalchemy import query
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.exc import SQLAlchemyError
 from wtforms import ValidationError
-from .models import AuditLog, File, ShareFile, User, db
+from .models import AuditLog, File, RecycleBin, ShareFile, User, db
 from datetime import datetime, timedelta
 import random 
 from flask_mail import Mail, Message
@@ -122,7 +122,8 @@ def view_files():
     for file in files:
         file.uploaded_by_username = current_user_fullname
     for file in shared_files:
-        file.uploaded_by_username = User.query.get(file.user_id).username
+        if file.status != 'recycle_bin':
+            file.uploaded_by_username = User.query.get(file.user_id).username
 
     return render_template('files.html', files=files, shared_files=shared_files)
 
@@ -218,7 +219,7 @@ def edit_file(file_id):
 def delete_file(file_id):
     file = File.query.get(file_id)
     if file:
-        filepath = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename)
+        filepath = os.path.join(current_app.config['RECYCLE_BIN_FOLDER'], file.filename)
         if os.path.exists(filepath):
             os.remove(filepath)
 
@@ -234,6 +235,64 @@ def delete_file(file_id):
             flash(f'File "{file.filename}" deleted successfully.', 'success')
     return redirect(url_for('main.view_files'))
     
+@main.route('/recycle', methods=['POST'])
+def recycle():
+    file_id = request.args.get('file_id')
+    file = File.query.get(file_id)
+    if file:
+        file.status = 'recycle_bin'
+        old_path = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename)
+        new_path = os.path.join(current_app.config['RECYCLE_BIN_FOLDER'], file.filename)
+        os.rename(old_path, new_path)
+
+        log = auditlog(
+            user_id=session['user_id'],
+            action_type='move to recycle bin',
+            details=f'Moved file ID: {file_id}, filename: {file.original_filename} to recycle bin'
+        )
+        db.session.add(log)
+
+        new_recycle_entry = RecycleBin(
+            file_id=file.file_id,
+            filename=file.filename,
+            deleted_by_user_id=session['user_id'],
+            deleted_at=datetime.utcnow()
+        )
+        db.session.add(new_recycle_entry)
+        db.session.commit()
+
+        flash(f'File "{file.filename}" moved to recycle bin.', 'success')
+    return redirect(url_for('main.view_files'))
+
+def restore_file(file_id):
+    file = File.query.get(file_id)
+    if file:
+        file.status = 'safe'
+        old_path = os.path.join(current_app.config['RECYCLE_BIN_FOLDER'], file.filename)
+        new_path = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename)
+        os.rename(old_path, new_path)
+
+        log = auditlog(
+            user_id=session['user_id'],
+            action_type='Restore',
+            details=f'Restored file ID: {file_id}, filename: {file.original_filename}'
+        )
+        db.session.add(log)
+
+        RecycleBin.query.filter_by(file_id=file_id).delete()
+        db.session.commit()
+
+        flash(f'File "{file.filename}" restored successfully.', 'success')
+    return redirect(url_for('main.view_files'))
+
+@main.route('/view_recycle_bin', methods=['GET'])
+def view_recycle_bin():
+    user_id = session.get('user_id')
+    if not user_id:
+        return redirect(url_for('auth.login'))
+    
+    recycle_bin_files = RecycleBin.query.filter_by(deleted_by_user_id=user_id).order_by(RecycleBin.deleted_at.desc()).all()
+    return render_template('recycle_bin.html', recycle_bin=recycle_bin_files)
 
 @main.route('/share', methods=['POST'])
 def share_file():

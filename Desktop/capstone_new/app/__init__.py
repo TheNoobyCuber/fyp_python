@@ -34,7 +34,9 @@ def create_app():
 
     #Upload folder configuration
     app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)),  'secure_uploads/')
+    app.config['RECYCLE_BIN_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)),  'recycle_bin/')
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    os.makedirs(app.config['RECYCLE_BIN_FOLDER'], exist_ok=True)
 
     #Mail configuration 
     app.config['MAIL_SERVER'] = 'smtp.gmail.com'
