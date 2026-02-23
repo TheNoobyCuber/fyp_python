@@ -105,6 +105,7 @@
                                 {% elif log.action_type == 'view file' %}bg-primary
                                 {% elif log.action_type == 'edit file' %}bg-secondary
                                 {% elif log.action_type == 'share file' %}bg-success
+                                {% elif log.action_type == 'view admin audit logs' %}bg-danger
                                 {% else %}bg-secondary{% endif %}">
                                 {{ log.action_type }}
                             </span>

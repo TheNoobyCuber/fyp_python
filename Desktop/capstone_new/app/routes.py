@@ -2,6 +2,7 @@ from fileinput import filename
 from importlib.resources import files
 import os
 from flask import Blueprint, app, render_template, request, redirect, send_from_directory, url_for, flash, session, current_app, jsonify, make_response
+from flask_sqlalchemy import query
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.exc import SQLAlchemyError
 from wtforms import ValidationError
@@ -590,5 +591,59 @@ def auditlog(user_id, action_type, details='', status='success'):
 
 @main.route('/view_audit_logs')
 def view_audit_logs():
-    logs = AuditLog.query.order_by(AuditLog.timestamp.desc()).all()
-    return render_template('audit_logs.html', logs=logs)
+    if not session.get('is_admin'):
+        flash('You do not have permission to view audit logs.', 'danger')
+
+        log = auditlog(
+            user_id=session.get('user_id'),
+            action_type='view admin audit logs',
+            details='Unauthorized attempt to view audit logs',
+            status='failed'
+        )
+        db.session.add(log)
+        db.session.commit()
+        return redirect(url_for('main.index'))
+
+    page = request.args.get('page', 1, type=int)
+    #logs_per_page = 30
+    userid = request.args.get('userid')
+    action_type = request.args.get('action_type')
+    status = request.args.get('status')
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+    sort = request.args.get('sort', 'timestamp')
+
+    query = db.session.query(AuditLog)
+    if userid:
+        query = query.filter(AuditLog.user_id == userid)
+    if action_type:
+        query = query.filter(AuditLog.action_type == action_type)
+    if status:
+        query = query.filter(AuditLog.status == status)
+    if date_from:
+        query = query.filter(AuditLog.timestamp >= date_from)
+    if date_to:
+        query = query.filter(AuditLog.timestamp <= date_to)
+
+    filter_params = {}
+    if userid:
+        filter_params['userid'] = userid
+    if action_type:
+        filter_params['action_type'] = action_type
+    if date_from:
+        filter_params['date_from'] = date_from
+    if date_to:
+        filter_params['date_to'] = date_to
+    if status:
+        filter_params['status'] = status
+
+    pagination = query.paginate(page=page, error_out=False)
+    logs = pagination.items
+    total_pages = pagination.pages
+
+    return render_template(
+        'audit_logs.html', 
+        logs=logs,
+        page=page,
+        total_pages=total_pages,
+        filter_params=filter_params)
