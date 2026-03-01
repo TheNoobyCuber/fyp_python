@@ -6,11 +6,13 @@ from flask_sqlalchemy import query
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.exc import SQLAlchemyError
 from wtforms import ValidationError
-from .models import AuditLog, File, RecycleBin, ShareFile, User, db
+from .models import AuditLog, File, RecycleBin, ShareFile, User, Watermark, db
 from datetime import datetime, timedelta
 import random 
 from flask_mail import Mail, Message
-from pypdf import PdfReader
+import pymupdf
+from PIL import Image, ImageDraw, ImageFont
+import pathlib
 
 ALLOWED_FILE_EXTENSIONS = ['.txt', '.pdf', '.doc', '.docx', '.xls', '.xlsx']
 auth = Blueprint('auth', __name__)
@@ -421,6 +423,17 @@ def upload():
                 db.session.add(new_file)
                 db.session.flush()  # Get new_file.file_id before commit
 
+                # Add watermark if file is a pdf
+                if filetype == '.pdf':
+                    watermark_text = f"Shared to {shared_with} on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}"
+                    creating_watermark(original_filename, unique_filename, watermark_text)
+                    watermark_entry = Watermark(
+                        file_id=new_file.file_id,
+                        watermark_text=watermark_text,
+                        created_at=datetime.utcnow()
+                    )
+                    db.session.add(watermark_entry)
+
                 share_file = ShareFile( #Add entry to ShareFile table
                     file_id=new_file.file_id,
                     shared_with_user_id=shared_with_user_id,
@@ -710,3 +723,32 @@ def view_audit_logs():
         page=page,
         total_pages=total_pages,
         filter_params=filter_params)
+
+@main.route('/creating_watermark', methods=['POST'])
+def creating_watermark(input_file, output_file, watermark_text):
+    try:
+        # Open the original PDF
+        doc = pymupdf.open(input_file)
+        
+        # Create a watermark image
+        watermark = Image.new('RGBA', (400, 100), (255, 255, 255, 0))
+        draw = ImageDraw.Draw(watermark)
+        font = ImageFont.load_default()
+        draw.text((10, 10), watermark_text, font=font, fill=(255, 0, 0, 128))
+        
+        # Save the watermark as a temporary PNG
+        temp_watermark_path = f'watermark/{filename}.jpg'
+        watermark.save(temp_watermark_path)
+
+        # Apply the watermark to each page of the PDF
+        for page in doc:
+            page.insert_image(page.rect, filename=temp_watermark_path, overlay=True)
+
+        # Save the watermarked PDF
+        doc.save(output_file)
+        
+        # Clean up temporary watermark image
+        os.remove(temp_watermark_path)
+    except Exception as e:
+        print(f"Error creating watermark: {e}")
+    

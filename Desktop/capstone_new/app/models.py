@@ -61,6 +61,13 @@ class RecycleBin(db.Model):
     deleted_by_user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
     deleted_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+class Watermark(db.Model):
+    __tablename__ = 'Watermark'
+    watermark_id = db.Column(db.Integer, primary_key=True)
+    file_id = db.Column(db.Integer, db.ForeignKey('File.file_id'))
+    watermark_text = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 class AuditLog(db.Model):
     __tablename__ = 'AuditLog'
     log_id = db.Column(db.Integer, primary_key=True)
@@ -69,23 +76,3 @@ class AuditLog(db.Model):
     details = db.Column(db.Text)  # Additional details about the action
     status = db.Column(db.String(50), default='success')  # success, failed
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-
-class DlpPolicy(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    description = db.Column(db.Text)
-    pattern = db.Column(db.Text)  # Regex pattern
-    sensitivity = db.Column(db.Integer)  ##### 1-5
-    action = db.Column(db.String(20))  # 'block', 'alert', 'quarantine'
-    is_active = db.Column(db.Boolean, default=True)
-
-class DlpAlert(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
-    policy_id = db.Column(db.Integer, db.ForeignKey('dlp_policy.id'))
-    severity = db.Column(db.String(20))
-    content = db.Column(db.Text)  # Redacted sensitive data
-    file_path = db.Column(db.String(500))
-    status = db.Column(db.String(20), default='new')  # new, reviewed, resolved
-    action_taken = db.Column(db.String(50))
