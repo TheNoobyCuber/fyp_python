@@ -1,9 +1,11 @@
+import base64
 from fileinput import filename
 from importlib.resources import files
 import os
+from urllib import response
 from flask import Blueprint, app, render_template, request, redirect, send_from_directory, url_for, flash, session, current_app, jsonify, make_response
 from flask_sqlalchemy import query
-from werkzeug.security import generate_password_hash, check_password_hash
+from cryptography.fernet import Fernet
 from sqlalchemy.exc import SQLAlchemyError
 from wtforms import ValidationError
 from .models import AuditLog, File, RecycleBin, ShareFile, User, Watermark, db
@@ -17,6 +19,34 @@ import pathlib
 ALLOWED_FILE_EXTENSIONS = ['.txt', '.pdf', '.doc', '.docx', '.xls', '.xlsx']
 auth = Blueprint('auth', __name__)
 main = Blueprint('main', __name__)
+
+def generate_prng():
+    raw_key_string = os.urandom(32) # Generate a 256-bit random key
+    key_string = base64.b64encode(raw_key_string).decode('utf-8')  # Encode the key in base64 for storage
+    return key_string
+
+def generate_salt():
+    return os.urandom(16)  # Generate a 128-bit random salt
+
+def encrypt_file_data(file_data, key=None):
+    if key is None:
+        key = generate_prng()  # Generate a new key if not provided
+    elif isinstance(key, str):
+        key = key.encode('utf-8') # Convert string key back to bytes
+    
+    var = Fernet(key)
+    encrypted_data = var.encrypt(file_data)
+    return encrypted_data, key
+
+def decrypt_file_data(encrypted_data, key):
+    if isinstance(key, str):
+        key = key.encode('utf-8') # Convert string key back to bytes
+    else:
+        key = key
+
+    ciphertext = Fernet(key)
+    decrypted_data = ciphertext.decrypt(encrypted_data)
+    return decrypted_data
 
 @auth.route('/send_otp', methods=['POST'])
 def send_otp():
@@ -152,6 +182,10 @@ def view_file(file_id):
         flash('Cannot display this file type.', 'warning')
         return redirect(url_for('main.view_files'))
     
+    key = file.key
+    raw_data = decrypt_file_data(file.fileData, key)  # Decrypt file data to ensure key is correct and file is accessible
+
+    
     log = auditlog(
         user_id=session['user_id'],
         action_type='view file',
@@ -165,9 +199,9 @@ def view_file(file_id):
         if hasattr(file, 'filepath') and os.path.exists(file.filepath):
             with open(file.filepath, 'r', encoding='utf-8', errors='ignore') as f:
                 file_content = f.read()
-        return render_template('view_file.html', file=file, file_id=file_id, content=file_content)
+        return render_template('view_file.html', file=file, file_id=file_id, content=raw_data)
 
-    return render_template('view_file.html', file=file, file_id=file_id)
+    return render_template('view_file.html', file=file, file_id=file_id, context=raw_data)
 
 @main.route('/serve_file/<int:file_id>', methods=['GET'])
 def serve_file(file_id):
@@ -192,11 +226,24 @@ def serve_file(file_id):
         print(f"File not found at path: {file_path}")  # Debug logging
         flash('File not found on server.', 'danger')
         return redirect(url_for('main.view_files'))
+    
+    raw_data = decrypt_file_data(file.fileData, file.key)  # Decrypt file data to ensure key is correct and file is accessible
+
+    file_response = make_response(raw_data)
     try:
         if file.filetype == '.pdf':
-            return send_from_directory(current_app.config['UPLOAD_FOLDER'], file.filename, as_attachment=False, mimetype='application/pdf')
+            file_response.mimetype = 'application/pdf'
+            file_response.headers['Content-Disposition'] = f'inline; filename="{file.original_filename}"'
         else:
-            return send_from_directory(current_app.config['UPLOAD_FOLDER'], file.filename, as_attachment=True)
+            file_response.mimetype = 'application/octet-stream'
+            file_response.headers['Content-Disposition'] = f'attachment; filename="{file.original_filename}"'
+        
+        file_response.headers['Content-Length'] = len(raw_data)
+        
+        return file_response
+        #     return send_from_directory(current_app.config['UPLOAD_FOLDER'], file.filename, as_attachment=False, mimetype='application/pdf')
+        # else:
+        #     return send_from_directory(current_app.config['UPLOAD_FOLDER'], file.filename, as_attachment=True)
     except Exception as e:
         print(f"Error serving file: {e}")
         flash(f'Error serving file: {str(e)}', 'danger')
@@ -206,6 +253,46 @@ def serve_file(file_id):
 def edit_file(file_id):
 
     file = File.query.get(file_id)
+    shared_file = ShareFile.query.filter_by(file_id=file_id, shared_with_user_id=session['user_id']).first()
+
+    if not file:
+        flash('File not found.', 'danger')
+        return redirect(url_for('main.view_files'))
+    
+    if shared_file is None and file.user_id != session['user_id']:
+        flash('You do not have permission to edit this file.', 'danger')
+        log = auditlog(
+            user_id=session['user_id'],
+            action_type='edit file',
+            details=f'Unauthorized edit attempt for file ID: {file_id}, filename: {file.original_filename}',
+            status='failed'
+        )
+        db.session.add(log)
+        db.session.commit()
+        return redirect(url_for('main.view_files'))
+    
+    if file.filetype == '.txt':
+        full_file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename)
+        if not os.path.exists(full_file_path):
+            flash('File not found on server.', 'danger')
+            return redirect(url_for('main.view_files'))
+        
+        if request.method == 'POST':
+            new_content = request.form.get('content', '')
+            try:
+                # decrypt original file data
+                decrypted_file_data = decrypt_file_data(file.fileData, file.key)
+
+                # Write the new content to the file
+                with open(full_file_path, 'w', encoding='utf-8') as f:
+                    f.write(new_content)
+            except Exception as e:
+                flash(f'Error saving file: {str(e)}', 'danger')
+
+    if file.filetype == '.pdf':
+        pass
+    if file.filetype == '.doc' or file.filetype == '.docx':
+        pass
 
     log = auditlog(
         user_id=session['user_id'],
@@ -215,7 +302,7 @@ def edit_file(file_id):
     db.session.add(log)
     db.session.commit()
 
-    return render_template('edit_file.html', file_id=file_id)
+    return render_template('edit_file.html', file=file, file_id=file_id)
 
 @main.route('/delete_file/<int:file_id>', methods=['GET', 'POST'])
 def delete_file(file_id):
@@ -385,13 +472,14 @@ def upload():
             user_id = session.get('user_id')
             unique_filename = f"{user_id}_{timestamp}_{original_filename}"
 
-            file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
+            #Read file data and encrypt
+            key_string = generate_prng()  # Generate encryption key
+            raw_file_data = file.read()
+            file_size = len(raw_file_data)  # Get file size in bytes
+            encrypted_file_data, returned_key = encrypt_file_data(raw_file_data, key_string)  # Encrypt file data
 
-            #Read file data
-            file_size = os.path.getsize(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
-
-            if file_size > 16 * 1024 * 1024:  # 16 MB limit
-                flash('File size exceeds the 16 MB limit. Please upload a smaller file.', 'danger')
+            if file_size > 50 * 1024 * 1024:  # 16 MB limit
+                flash('File size exceeds the 50 MB limit. Please upload a smaller file.', 'danger')
                 os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
                 
                 log = auditlog(
@@ -407,13 +495,16 @@ def upload():
             
               
             else:
+                file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
+
                 new_file = File(
                     user_id=user_id,
                     filename=unique_filename,
                     original_filename=original_filename,
-                    filepath= os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename),
                     filetype=filetype,
                     file_size=file_size,  # Placeholder for file size
+                    fileData=encrypted_file_data,  # Store encrypted data
+                    key=returned_key,  # Generate and store encryption key
                     description=description,
                     shared_with=shared_with,
                     status='pending',
@@ -426,7 +517,7 @@ def upload():
                 # Add watermark if file is a pdf
                 if filetype == '.pdf':
                     watermark_text = f"Shared to {shared_with} on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}"
-                    creating_watermark(original_filename, unique_filename, watermark_text)
+                    add_invisible_watermark(original_filename, unique_filename, watermark_text)
                     watermark_entry = Watermark(
                         file_id=new_file.file_id,
                         watermark_text=watermark_text,
@@ -751,4 +842,38 @@ def creating_watermark(input_file, output_file, watermark_text):
         os.remove(temp_watermark_path)
     except Exception as e:
         print(f"Error creating watermark: {e}")
-    
+
+@main.route('/addInvisibleWatermark', methods=['POST'])
+def add_invisible_watermark(input_file, output_file, watermark_text):
+    input_file = request.form.get('input_pdf')
+    output_file = request.form.get('output_pdf')
+    watermark_text = request.form.get('watermark_text')
+
+    try:
+        doc = pymupdf.open(input_file)
+        for page_num in range(doc.page_count):
+            page = doc[page_num]
+            
+        # Define text properties
+        point = pymupdf.Point(100, 100) # Adjust position as needed
+        font_size = 12
+        
+        # Insert text with rendering mode 3 (invisible)
+        page.insert_text(
+            point,
+            watermark_text,
+            fontsize=font_size,
+            render_mode=3, # Neither fill nor stroke (invisible)
+            color=(0, 0, 0), # Color doesn't matter as it's invisible
+        )
+
+        watermark = Watermark(
+            file_id=File.file_id,
+            watermark_text=watermark_text,
+            created_at=datetime.utcnow()
+        )
+
+        doc.save(output_file)
+        doc.close()    
+    except Exception as e:
+        print(f"Error adding invisible watermark: {e}")

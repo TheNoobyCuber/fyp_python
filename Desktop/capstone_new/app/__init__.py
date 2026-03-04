@@ -27,16 +27,22 @@ def create_app():
     # Configuration
     app.config['SECRET_KEY'] = '22077237dsecretkey'
 
-    # Database configuration
+    # Database configuration + pool settings to handle long-running operations
     app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root:@localhost:3306/DLPS'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     app.config['SQLALCHEMY_ECHO'] = True  # Set to True to see SQL queries
-
-    #Upload folder configuration
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_size': 10,
+    'pool_recycle': 3600,  # Recycle connections after 1 hour
+    'pool_pre_ping': True,  # Test connections before using
+}
+    
+    #Upload and Upload folder configuration
     app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)),  'secure_uploads/')
     app.config['RECYCLE_BIN_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)),  'recycle_bin/')
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['RECYCLE_BIN_FOLDER'], exist_ok=True)
+    app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB limit
 
     #Mail configuration 
     app.config['MAIL_SERVER'] = 'smtp.gmail.com'

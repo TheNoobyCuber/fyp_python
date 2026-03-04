@@ -77,6 +77,17 @@
                 <p>No preview available for this file type.</p>
                 {% endif %}
             </div>
+            <div>
+                <a href="{{ url_for('main.edit_file', file_id=file.file_id) }}" 
+                    class="btn btn-secondary bi bi-pencil"> Edit</a>
+                <a href="{{ url_for('main.share_file', file_id=file.file_id) }}" 
+                    class="btn btn-success bi bi-share"> Share</a>
+                <form action="{{ url_for('main.recycle', file_id=file.file_id) }}" method="POST" class="d-inline">
+                    <button type="submit" class="btn btn-danger bi bi-trash" 
+                    onclick="return confirm('Are you sure you want to move this file to the recycle bin?')"> Move to Recycle Bin</button>
+                </form>
+                <a href='{{ url_for("main.index") }}'><button type='button' class='btn btn-primary'>Back to Dashboard</button></a>
+            </div>
         </div>
     </div>
     {% endif %}
