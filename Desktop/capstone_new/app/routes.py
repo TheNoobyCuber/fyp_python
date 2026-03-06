@@ -15,6 +15,10 @@ from flask_mail import Mail, Message
 import pymupdf
 from PIL import Image, ImageDraw, ImageFont
 import pathlib
+import PyPDF2
+import json
+import socket
+from pikepdf import Pdf, Name, String, Dictionary, Array, Stream
 
 ALLOWED_FILE_EXTENSIONS = ['.txt', '.pdf', '.doc', '.docx', '.xls', '.xlsx']
 auth = Blueprint('auth', __name__)
@@ -493,65 +497,67 @@ def upload():
                 return render_template('uploadfile.html', shared_with=shared_with, 
                                        description=description)
             
-              
-            else:
-                file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
+            file.seek(0)  # Reset file pointer to the beginning after reading
 
-                new_file = File(
-                    user_id=user_id,
-                    filename=unique_filename,
-                    original_filename=original_filename,
-                    filetype=filetype,
-                    file_size=file_size,  # Placeholder for file size
-                    fileData=encrypted_file_data,  # Store encrypted data
-                    key=returned_key,  # Generate and store encryption key
-                    description=description,
-                    shared_with=shared_with,
-                    status='pending',
-                    sensitivity=5,
-                    action='no action'
+            new_file = File(
+                user_id=user_id,
+                filename=unique_filename,
+                original_filename=original_filename,
+                filetype=filetype,
+                file_size=file_size,  # Placeholder for file size
+                fileData=encrypted_file_data,  # Store encrypted data
+                key=returned_key,  # Generate and store encryption key
+                description=description,
+                shared_with=shared_with,
+                status='pending',
+                sensitivity=5,
+                action='no action'
+            )
+            db.session.add(new_file)
+            db.session.flush()  # Get new_file.file_id before commit
+            
+            # Add watermark if file is a pdf
+            if filetype == '.pdf':
+                filepath = file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
+                username = session.get('username')
+                ip_address = get_system_info()
+                view_time = datetime.utcnow().isoformat()
+                add_invisible_watermark(filepath, unique_filename)
+
+                watermark_entry = Watermark(
+                    file_id = new_file.file_id,
+                    watermark_text= f"User: {username}, IP: {ip_address}, Time: {view_time}",
+                    created_at=datetime.utcnow()
                 )
-                db.session.add(new_file)
-                db.session.flush()  # Get new_file.file_id before commit
+                db.session.add(watermark_entry)
 
-                # Add watermark if file is a pdf
-                if filetype == '.pdf':
-                    watermark_text = f"Shared to {shared_with} on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}"
-                    add_invisible_watermark(original_filename, unique_filename, watermark_text)
-                    watermark_entry = Watermark(
-                        file_id=new_file.file_id,
-                        watermark_text=watermark_text,
-                        created_at=datetime.utcnow()
-                    )
-                    db.session.add(watermark_entry)
+            share_file = ShareFile( #Add entry to ShareFile table
+                file_id=new_file.file_id,
+                shared_with_user_id=shared_with_user_id,
+                shared_by_user_id=session['user_id'],
+                description=description,
+                shared_at=datetime.utcnow()
+            )
+            db.session.add(share_file)
 
-                share_file = ShareFile( #Add entry to ShareFile table
-                    file_id=new_file.file_id,
-                    shared_with_user_id=shared_with_user_id,
-                    shared_by_user_id=session['user_id'],
-                    description=description,
-                    shared_at=datetime.utcnow()
-                )
-                db.session.add(share_file)
+            # Logging the upload event
+            log = auditlog(
+                user_id=session['user_id'],
+                action_type='upload',
+                details='Successful file upload: ' + original_filename
+            )
+            db.session.add(log)
 
-                # Logging the upload event
-                log = auditlog(
-                    user_id=session['user_id'],
-                    action_type='upload',
-                    details='Successful file upload: ' + original_filename
-                )
-                db.session.add(log)
-
-                log2 = auditlog( #Log the sharing action
-                    user_id=session['user_id'],
-                    action_type='share file',
-                    details=f'Shared file ID: {new_file.file_id}, filename: {original_filename} with users: {shared_with}'
-                )
-                db.session.add(log2)
-                db.session.commit()
-        
-                flash(f'File "{original_filename}" uploaded successfully!', 'success')
-                return redirect(url_for('main.index'))
+            log2 = auditlog( #Log the sharing action
+                user_id=session['user_id'],
+                action_type='share file',
+                details=f'Shared file ID: {new_file.file_id}, filename: {original_filename} with users: {shared_with}'
+            )
+            db.session.add(log2)
+            db.session.commit()
+    
+            flash(f'File "{original_filename}" uploaded successfully!', 'success')
+            return redirect(url_for('main.index'))
         
     except Exception as e:
         print(f"\n=== DEBUG: ERROR ===")
@@ -843,37 +849,52 @@ def creating_watermark(input_file, output_file, watermark_text):
     except Exception as e:
         print(f"Error creating watermark: {e}")
 
+def get_system_info():
+    """Get client's IP address for logging purposes"""
+    ip_address = request.remote_addr
+    return ip_address
+
 @main.route('/addInvisibleWatermark', methods=['POST'])
-def add_invisible_watermark(input_file, output_file, watermark_text):
-    input_file = request.form.get('input_pdf')
-    output_file = request.form.get('output_pdf')
-    watermark_text = request.form.get('watermark_text')
+def add_invisible_watermark(input_path, filename):
+    input_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
 
-    try:
-        doc = pymupdf.open(input_file)
-        for page_num in range(doc.page_count):
-            page = doc[page_num]
-            
-        # Define text properties
-        point = pymupdf.Point(100, 100) # Adjust position as needed
-        font_size = 12
-        
-        # Insert text with rendering mode 3 (invisible)
-        page.insert_text(
-            point,
-            watermark_text,
-            fontsize=font_size,
-            render_mode=3, # Neither fill nor stroke (invisible)
-            color=(0, 0, 0), # Color doesn't matter as it's invisible
-        )
+    ip_address = get_system_info()
+    print(ip_address)
+    viewing_time = datetime.now().isoformat()
+    username = session.get('username')
+    watermark = {
+        'username': username,
+        'ip': ip_address,
+        'time': viewing_time
+    }
+    watermark_json = json.dumps(watermark)
+    watermark_b64 = base64.b64encode(watermark_json.encode()).decode()  # Encode watermark text to base64 to ensure it can be safely embedded
 
-        watermark = Watermark(
-            file_id=File.file_id,
-            watermark_text=watermark_text,
-            created_at=datetime.utcnow()
-        )
+    with Pdf.open(input_path, allow_overwriting_input=True) as file:
+        if file.Root is None:
+            file.Root = Dictionary()
+        if file.docinfo is None:
+            file.docinfo = Dictionary()
+        file.docinfo['/Watermark'] = watermark_b64  # Store the watermark in PDF metadata (invisible to users but can be extracted later)
+        file.docinfo['/WatermarkJSON'] = watermark_json
+        file.save()  # Save changes to the original file or a new file as needed
 
-        doc.save(output_file)
-        doc.close()    
-    except Exception as e:
-        print(f"Error adding invisible watermark: {e}")
+    print(f"✓ Invisible watermark embedded successfully")
+    print(f"  Username: {username}")
+    print(f"  IP: {ip_address}")
+    print(f"  Time: {viewing_time}")
+    return watermark 
+    
+
+def add_watermark(file_id, watermark_text):
+    file = File.query.get(file_id)
+    if file and file.filetype == '.pdf':
+        try:
+            file = open(os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename), 'rb')
+            reader = PyPDF2.PdfReader(file)
+            page = reader.getPage(0)
+
+        except Exception as e:
+            print(f"Error adding watermark: {e}")
+
+
