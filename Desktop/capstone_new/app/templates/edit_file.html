@@ -16,19 +16,20 @@
     <div class="card shadow">
         <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
             <h4 class="mb-0"><i class="bi bi-pencil-square me-2"></i>Edit File: {{ file.original_filename }}</h4>
-            <a href="{{ url_for('main.index') }}" class="btn btn-light btn-sm">
+            <a href="{{ url_for('main.view_file', file_id=file.file_id) }}" class="btn btn-light btn-sm">
                 <i class="bi bi-arrow-left me-1"></i>Back
             </a>
         </div>
         <div class="card-body">
             <form method="POST" action="{{ url_for('main.edit_file', file_id=file.file_id) }}">
+                {%if file.filetype == '.txt' and file_content %}
                 <div class="mb-3">
                     <label for="content" class="form-label">File Content</label>
                     <textarea class="form-control" id="content" name="content" rows="20" 
-                              style="font-family: monospace;">{{ content }}</textarea>
+                              style="font-family: monospace;">{{ file_content }}</textarea>
                 </div>
                 <div class="d-flex justify-content-between">
-                    <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Cancel</a>
+                    <a href="{{ url_for('main.view_files') }}" class="btn btn-secondary">Cancel</a>
                     <button type="submit" class="btn btn-success">
                         <i class="bi bi-save me-1"></i>Save Changes
                     </button>
@@ -38,6 +39,7 @@
         <div class="card-footer text-muted">
             <small>Last modified: {{ file.upload_time.strftime('%Y-%m-%d %H:%M') }}</small>
         </div>
+        {% endif %}
     </div>
 </div>
 </body>

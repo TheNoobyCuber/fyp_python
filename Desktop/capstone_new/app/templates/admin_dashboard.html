@@ -67,7 +67,7 @@
                     <div class="card-body">
                         <div class="row g-5 text-center justify-content-center">
                             <div class="col-md-3">
-                                <a href="{{ url_for('main.admin') }}" class="btn btn-outline-primary admin-action-btn w-100">
+                                <a href="{{ url_for('main.manage_users') }}" class="btn btn-outline-primary admin-action-btn w-100">
                                     <h4><i class="bi bi-people-fill me-2"></i>Manage Users</h4>
                                 </a>
                             </div>
@@ -214,33 +214,18 @@
                     </div>
                     <div class="modal-body">
                         <form id="systemSettingsForm">
-                            <div class="mb-3">
-                                <label class="form-label">Max File Size (MB)</label>
-                                <input type="number" class="form-control" name="max_file_size" value="50" min="1" max="1000">
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Allowed File Types</label>
-                                <input type="text" class="form-control" name="allowed_types" value=".txt,.pdf,.doc,.docx,.xls,.xlsx">
-                            </div>
-                            <div class="mb-3">
                                 <label class="form-label">System Maintenance</label>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" name="maintenance_mode">
                                     <label class="form-check-label">Enable Maintenance Mode</label>
                                 </div>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label">User Registration</label>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" name="allow_registration" checked>
-                                    <label class="form-check-label">Allow New Registrations</label>
-                                </div>
-                            </div>
                         </form>
-                    </div>
-                    <div class="modal-footer">
+                         <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
                         <button type="button" class="btn btn-primary" onclick="saveSystemSettings()">Save Changes</button>
+                    </div>
+                   
                     </div>
                 </div>
             </div>

@@ -200,12 +200,10 @@ def view_file(file_id):
     
     
     if file.filetype == '.txt':
-        if hasattr(file, 'filepath') and os.path.exists(file.filepath):
-            with open(file.filepath, 'r', encoding='utf-8', errors='ignore') as f:
-                file_content = f.read()
-        return render_template('view_file.html', file=file, file_id=file_id, content=raw_data)
+        decrypted_content = decrypt_file_data(file.fileData, file.key).decode('utf-8') # Assuming the original file is UTF-8 encoded text
+        return render_template('view_file.html', file=file, file_id=file_id, content=decrypted_content)
 
-    return render_template('view_file.html', file=file, file_id=file_id, context=raw_data)
+    return render_template('view_file.html', file=file, file_id=file_id, content=raw_data)
 
 @main.route('/serve_file/<int:file_id>', methods=['GET'])
 def serve_file(file_id):
@@ -276,20 +274,38 @@ def edit_file(file_id):
         return redirect(url_for('main.view_files'))
     
     if file.filetype == '.txt':
-        full_file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename)
-        if not os.path.exists(full_file_path):
+        file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename)
+
+        if not os.path.exists(file_path):
             flash('File not found on server.', 'danger')
             return redirect(url_for('main.view_files'))
+
+        if request.method == 'GET': #Handle GET Request = display file content
+            # decrypt original file data
+            decrypted_file_data = decrypt_file_data(file.fileData, file.key)
+            file_content = decrypted_file_data.decode('utf-8')  # Assuming the original file is UTF-8 encoded text
+            return render_template('edit_file.html', file=file, file_id=file_id, file_content=file_content)
         
-        if request.method == 'POST':
+        else:
             new_content = request.form.get('content', '')
             try:
-                # decrypt original file data
-                decrypted_file_data = decrypt_file_data(file.fileData, file.key)
+                # Write new content to file
+                new_content_bytes = new_content.encode('utf-8')
+                encrypted_content, _ = encrypt_file_data(new_content_bytes, file.key)  # Encrypt new content
+                file.fileData = encrypted_content  # Update file data with encrypted content
 
-                # Write the new content to the file
-                with open(full_file_path, 'w', encoding='utf-8') as f:
-                    f.write(new_content)
+                with open(file_path, 'wb') as f:
+                    f.write(new_content_bytes)  # Save new content to file (unencrypted on disk)
+
+                log = auditlog(
+                    user_id=session['user_id'],
+                    action_type='edit file',
+                    details=f'Edited file ID: {file_id}, filename: {file.original_filename}'
+                )
+                db.session.add(log)
+                db.session.commit()
+                flash(f'File "{file.original_filename}" updated successfully.', 'success')
+                return redirect(url_for('main.view_file', file_id=file_id))
             except Exception as e:
                 flash(f'Error saving file: {str(e)}', 'danger')
 
@@ -297,14 +313,6 @@ def edit_file(file_id):
         pass
     if file.filetype == '.doc' or file.filetype == '.docx':
         pass
-
-    log = auditlog(
-        user_id=session['user_id'],
-        action_type='edit file',
-        details=f'Edited file ID: {file_id}, filename: {file.original_filename}'
-    )
-    db.session.add(log)
-    db.session.commit()
 
     return render_template('edit_file.html', file=file, file_id=file_id)
 
@@ -314,6 +322,7 @@ def delete_file(file_id):
     recycle_entry = RecycleBin.query.filter_by(file_id=file_id).first()
     if file:
         filepath = os.path.join(current_app.config['RECYCLE_BIN_FOLDER'], file.filename)
+
         if os.path.exists(filepath):
             os.remove(filepath)
 
@@ -340,6 +349,7 @@ def recycle():
         old_path = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename)
         new_path = os.path.join(current_app.config['RECYCLE_BIN_FOLDER'], file.filename)
         os.rename(old_path, new_path)
+
 
         log = auditlog(
             user_id=session['user_id'],
@@ -516,9 +526,10 @@ def upload():
             db.session.add(new_file)
             db.session.flush()  # Get new_file.file_id before commit
             
+            filepath = file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
+            
             # Add watermark if file is a pdf
             if filetype == '.pdf':
-                filepath = file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
                 username = session.get('username')
                 ip_address = get_system_info()
                 view_time = datetime.utcnow().isoformat()
@@ -821,6 +832,26 @@ def view_audit_logs():
         total_pages=total_pages,
         filter_params=filter_params)
 
+@main.route('/manage_users')
+def manage_users():
+    if request.method == 'GET':
+        if not session.get('is_admin'):
+            flash('You do not have permission to manage users.', 'danger')
+
+            log = auditlog(
+                user_id=session.get('user_id'),
+                action_type='view manage users',
+                details='Unauthorized attempt to access manage users page',
+                status='failed'
+            )
+            db.session.add(log)
+            db.session.commit()
+            return redirect(url_for('main.index'))
+        
+        users = User.query.order_by(User.created_at.desc()).all()
+
+    return render_template('manage_users.html', users=users)
+
 @main.route('/creating_watermark', methods=['POST'])
 def creating_watermark(input_file, output_file, watermark_text):
     try:
@@ -897,4 +928,24 @@ def add_watermark(file_id, watermark_text):
         except Exception as e:
             print(f"Error adding watermark: {e}")
 
+@main.route('/change_settings', methods=['POST'])
+def change_settings():
+    if request.method == 'POST':
+        setting_to_change = request.form.get('setting_to_change')
 
+        user_id = session.get('user_id')
+        if not user_id:
+            flash('You must be logged in to change settings.', 'danger')
+            return redirect(url_for('auth.login'))
+        
+        if setting_to_change == 'password':
+            old_password = request.form.get('old_value')
+            new_password = request.form.get('new_value')
+
+            user = User.query.get(user_id)
+            if not user.check_password(old_password):
+                flash('Old password is incorrect.', 'danger')
+                return redirect(url_for('main.manage_users'))
+            user.set_password(new_password)
+            db.session.commit()
+            flash('Password changed successfully.', 'success')

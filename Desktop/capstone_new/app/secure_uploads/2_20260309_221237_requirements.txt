@@ -1,0 +1,31 @@
+# Core Flask
+flask==2.3.3
+flask-sqlalchemy==3.0.5
+flask-login==0.6.2
+flask-wtf==1.1.1
+flask-mail==0.9.1     # OTP
+
+WTForms==3.1.2
+
+# Database driver (choose one)
+pymysql==1.0.3      # For MySQL
+
+# Security
+cryptography==41.0.4
+bcrypt==4.0.1
+
+# File processing
+python-magic==0.4.27
+pymupdf==1.27.1
+Pillow==12.1.1
+pikepdf==3.0.0
+
+# Pattern matching
+regex==2023.6.3
+
+# Optional but recommended
+flask-migrate==4.0.4  # Database migrations
+
+brooo
+holy shit I can edit this ahhhh
+

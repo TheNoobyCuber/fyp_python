@@ -32,15 +32,11 @@
             <div class="row">
                 <div class="col-md-8">
                     <dl class="row">
-
                         <dt class="col-sm-3">User ID</dt>
                         <dd class="col-sm-9">{{ user.id }}</dd>
 
                         <dt class="col-sm-3">Username</dt>
                         <dd class="col-sm-9">{{ user.username }}</dd>
-
-                        <dt class="col-sm-3">Total Files</dt>
-                        <dd class="col-sm-9">{{ files|length }}</dd>
                     </dl>
                 </div>
                 <div class="col-md-4 text-center">
@@ -71,6 +67,45 @@
             <button class="btn btn-outline-info admin-action-btn w-100" data-bs-toggle="modal" data-bs-target="#systemSettingsModal">
                 <h4><i class="bi bi-gear-fill me-2"></i>Change my Account Settings</h4>
             </button>
+        </div>
+        <div class="modal fade" id="systemSettingsModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header bg-info text-white">
+                        <h5 class="modal-title"><i class="bi bi-gear-fill me-2"></i>System Settings</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="changeSettingsForm" method="post" action="{{ url_for('main.change_settings') }}">
+                            <div class="mb-3">
+                                <label class="form-label">What do you want to change?</label>
+                                <select class="form-select" name="setting_to_change">
+                                    <option value="password" id="passwordOption">Password</option>
+                                    <option value="email" id="emailOption">Email Address</option>
+                                    <option value="position" id="positionOption">Position</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Please enter old value</label>
+                                <input type="text" class="form-control" name="old_value" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Please enter new value</label>
+                                <input type="text" class="form-control" name="new_value" required>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        <a href="{{ url_for('main.change_settings') }}" class="btn btn-primary" onclick="SendOTP()">Submit</a>
+                    </div>
+                    <div class="mb-3" id="otp-section" style="display: none;">
+                                <label for="otp" class="form-label">Verification Code</label>
+                                <input type="text" class="form-control" id="otp" name="otp" 
+                                    placeholder="Enter 6-digit code">
+                                <small class="form-text text-muted">Enter the 6 digit verification code sent to your email</small>
+                </div>
+            </div>
         </div>
     </div>
     <br>
@@ -140,4 +175,30 @@
         </div>
     </div>
 </body>
+<script>
+function sendOTP() {
+        const email = document.getElementById('email').value;
+        const username = document.getElementById('username').value;
+        fetch('{{ url_for("auth.send_otp") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ email: email, username: username })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('OTP sent, please check your email!');
+                document.getElementById('otp-section').style.display = 'block';
+            } else {
+                alert('Error sending OTP: ' + data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An error occurred.');
+        });
+    }
+</script>
 </html>
