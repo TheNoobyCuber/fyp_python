@@ -91,6 +91,30 @@ def send_otp():
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
+    
+def get_user_folders(type='uploads', user_id=None):
+    try:
+        if user_id is None:
+            user_id = session.get('user_id')
+            if not user_id:
+                flash('You need to login before proceeding.')
+                return render_template('login.html')
+        
+        config_folders = {
+            'pdf_convert_to_images':  'CONVERT_PDF_FOLDER',
+            'uploads': 'UPLOAD_FOLDER'
+        }
+
+        config_folder = config_folders.get(type, type.upper() + 'FOLDER')
+        base_folder = current_app.config.get(config_folder)
+
+        user_folder = os.path.join(base_folder, str(user_id))
+        os.makedirs(user_folder, exist_ok=True)
+
+        return user_folder
+
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
 
 
 @main.route('/dashboard')
@@ -177,10 +201,21 @@ def view_file(file_id):
         return redirect(url_for('main.view_files'))
     
     if file.user_id != user_id:
+        user_folder = get_user_folders('uploads', file.user_id)
         shared_file = ShareFile.query.filter_by(file_id=file_id, shared_with_user_id=user_id).first()
         if not shared_file:
             flash('Access denied.', 'danger')
             return redirect(url_for('main.view_files'))
+    else:
+        user_folder = get_user_folders('uploads', user_id)
+
+    file_path = os.path.join(user_folder, file.filename)
+    if not os.path.exists(file_path):
+        # flash('File not found.', 'danger')
+        # return redirect(url_for('main.view_files'))
+        print(f"File not found at path: {file_path}")  # Debug logging
+        flash('File not found on server.', 'danger')
+        return redirect(url_for('main.view_files'))
     
     if file.filetype not in ALLOWED_FILE_EXTENSIONS:
         flash('Cannot display this file type.', 'warning')
@@ -215,12 +250,17 @@ def serve_file(file_id):
         flash('File not found.', 'danger')
         return redirect(url_for('main.view_files'))
     if file.user_id != user_id:
+        print(f"DEBUG - file.user_id = {file.user_id}" )
+        user_folder = get_user_folders('uploads', file.user_id)
         shared_file = ShareFile.query.filter_by(file_id=file_id, shared_with_user_id=user_id).first()
         if not shared_file:
             flash('Access denied.', 'danger')
             return redirect(url_for('main.view_files'))
+    else:
+        user_folder = get_user_folders('uploads', user_id)
     
-    file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename)
+    file_path = os.path.join(user_folder, file.filename)
+    print(f"DEBUG - filepath: {file_path}")
 
     if not os.path.exists(file_path):
         # flash('File not found.', 'danger')
@@ -236,6 +276,17 @@ def serve_file(file_id):
         if file.filetype == '.pdf':
             file_response.mimetype = 'application/pdf'
             file_response.headers['Content-Disposition'] = f'inline; filename="{file.original_filename}"'
+            username = session.get('username')
+            ip_address = get_system_info()
+            view_time = datetime.utcnow().isoformat()
+            add_invisible_watermark(file_path, file.filename)
+
+            watermark_entry = Watermark(
+                file_id = file.file_id,
+                watermark_text= f"User: {username}, IP: {ip_address}, Time: {view_time}",
+                created_at=datetime.utcnow()
+            )
+            db.session.add(watermark_entry)
         else:
             file_response.mimetype = 'application/octet-stream'
             file_response.headers['Content-Disposition'] = f'attachment; filename="{file.original_filename}"'
@@ -253,7 +304,7 @@ def serve_file(file_id):
 
 @main.route('/edit_file/<int:file_id>', methods=['GET', 'POST'])
 def edit_file(file_id):
-
+    user_id = session.get('user_id')
     file = File.query.get(file_id)
     shared_file = ShareFile.query.filter_by(file_id=file_id, shared_with_user_id=session['user_id']).first()
 
@@ -274,7 +325,8 @@ def edit_file(file_id):
         return redirect(url_for('main.view_files'))
     
     if file.filetype == '.txt':
-        file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename)
+        user_folder = get_user_folders('uploads', user_id)
+        file_path = os.path.join(user_folder, file.filename)
 
         if not os.path.exists(file_path):
             flash('File not found on server.', 'danger')
@@ -451,6 +503,7 @@ def share_file():
     
 @main.route('/upload', methods=['GET', 'POST'])
 def upload():
+    user_id = session.get('user_id')
     try:   
         if request.method == 'POST':
             file = request.files['file']
@@ -485,12 +538,12 @@ def upload():
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             user_id = session.get('user_id')
             unique_filename = f"{user_id}_{timestamp}_{original_filename}"
+            print(f"DEBUG - unique filename: {unique_filename}")
 
             #Read file data and encrypt
             key_string = generate_prng()  # Generate encryption key
             raw_file_data = file.read()
             file_size = len(raw_file_data)  # Get file size in bytes
-            encrypted_file_data, returned_key = encrypt_file_data(raw_file_data, key_string)  # Encrypt file data
 
             if file_size > 50 * 1024 * 1024:  # 16 MB limit
                 flash('File size exceeds the 50 MB limit. Please upload a smaller file.', 'danger')
@@ -506,8 +559,18 @@ def upload():
                 db.session.commit()
                 return render_template('uploadfile.html', shared_with=shared_with, 
                                        description=description)
-            
-            file.seek(0)  # Reset file pointer to the beginning after reading
+
+            encrypted_file_data, returned_key = encrypt_file_data(raw_file_data, key_string)  # Encrypt file data
+
+            user_folder = get_user_folders('uploads', user_id)
+            print(f"DEBUG - user folder from get_user_folders: {user_folder}")
+            filepath = os.path.join(user_folder, unique_filename)
+            print(f"DEBUG - full filepath: {filepath}")
+            print(f"DEBUG - user_folder exists: {os.path.exists(user_folder)}")
+            print(f"DEBUG - user_folder is directory: {os.path.isdir(user_folder)}")
+            file.seek(0)
+            file.save(filepath)
+            print(f"DEBUG - File saved, exists: {os.path.exists(filepath)}")
 
             new_file = File(
                 user_id=user_id,
@@ -526,10 +589,21 @@ def upload():
             db.session.add(new_file)
             db.session.flush()  # Get new_file.file_id before commit
             
-            filepath = file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
-            
+
+            share_file = ShareFile( #Add entry to ShareFile table
+                file_id=new_file.file_id,
+                shared_with_user_id=shared_with_user_id,
+                shared_by_user_id=session['user_id'],
+                description=description,
+                shared_at=datetime.utcnow()
+            )
+            db.session.add(share_file)
+
             # Add watermark if file is a pdf
             if filetype == '.pdf':
+                
+                convert_pdf_to_images(filepath)
+                flash("Pdf conversion completed!")
                 username = session.get('username')
                 ip_address = get_system_info()
                 view_time = datetime.utcnow().isoformat()
@@ -541,15 +615,6 @@ def upload():
                     created_at=datetime.utcnow()
                 )
                 db.session.add(watermark_entry)
-
-            share_file = ShareFile( #Add entry to ShareFile table
-                file_id=new_file.file_id,
-                shared_with_user_id=shared_with_user_id,
-                shared_by_user_id=session['user_id'],
-                description=description,
-                shared_at=datetime.utcnow()
-            )
-            db.session.add(share_file)
 
             # Logging the upload event
             log = auditlog(
@@ -887,7 +952,7 @@ def get_system_info():
 
 @main.route('/addInvisibleWatermark', methods=['POST'])
 def add_invisible_watermark(input_path, filename):
-    input_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
+    user_id = session.get('user_id')
 
     ip_address = get_system_info()
     print(ip_address)
@@ -949,3 +1014,18 @@ def change_settings():
             user.set_password(new_password)
             db.session.commit()
             flash('Password changed successfully.', 'success')
+
+def convert_pdf_to_images(pdf_path):
+    user_id = session.get('user_id')
+    user_folder = get_user_folders('pdf_convert_to_images', user_id)
+
+    doc = pymupdf.open(pdf_path)
+    for page in range(len(doc)):
+        image = doc.load_page(page)
+        pix = image.get_pixmap()
+        output_path = os.path.join(user_folder, f"page-{page+1}.jpeg")
+        pix.save(output_path)
+    doc.close()
+    
+    return user_folder
+
