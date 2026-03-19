@@ -1,6 +1,7 @@
 import base64
 from fileinput import filename
 from importlib.resources import files
+import hashlib, hmac
 import os
 from urllib import response
 from flask import Blueprint, app, render_template, request, redirect, send_from_directory, url_for, flash, session, current_app, jsonify, make_response
@@ -8,12 +9,11 @@ from flask_sqlalchemy import query
 from cryptography.fernet import Fernet
 from sqlalchemy.exc import SQLAlchemyError
 from wtforms import ValidationError
-from .models import AuditLog, File, RecycleBin, ShareFile, User, Watermark, db
+from .models import AuditLog, File, RecycleBin, ShareFile, User, FileHash, db
 from datetime import datetime, timedelta
 import random 
 from flask_mail import Mail, Message
 import pymupdf
-from PIL import Image, ImageDraw, ImageFont
 import pathlib
 import PyPDF2
 import json
@@ -31,6 +31,14 @@ def generate_prng():
 
 def generate_salt():
     return os.urandom(16)  # Generate a 128-bit random salt
+
+def generate_hmac_hash(file_content, key=None):
+    key = generate_prng()
+    raw_key = base64.b64decode(key)
+    hash_value = hmac.new(raw_key, file_content, hashlib.sha256)
+    hex_hash = hash_value.hexdigest()
+    print(f"HMAC-SHA256 (Hex): {hex_hash}")
+    return hex_hash
 
 def encrypt_file_data(file_data, key=None):
     if key is None:
@@ -102,7 +110,8 @@ def get_user_folders(type='uploads', user_id=None):
         
         config_folders = {
             'pdf_convert_to_images':  'CONVERT_PDF_FOLDER',
-            'uploads': 'UPLOAD_FOLDER'
+            'uploads': 'UPLOAD_FOLDER',
+            'temp': 'TEMP_FOLDER'
         }
 
         config_folder = config_folders.get(type, type.upper() + 'FOLDER')
@@ -114,7 +123,8 @@ def get_user_folders(type='uploads', user_id=None):
         return user_folder
 
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)})
+        print(f"Error in get_user_folders: {str(e)}")
+        return None
 
 
 @main.route('/dashboard')
@@ -243,14 +253,17 @@ def view_file(file_id):
 @main.route('/serve_file/<int:file_id>', methods=['GET'])
 def serve_file(file_id):
     user_id = session.get('user_id')
+
     if not user_id:
         return redirect(url_for('auth.login'))
+    
     file = File.query.get(file_id)
+
     if not file:
         flash('File not found.', 'danger')
         return redirect(url_for('main.view_files'))
+    
     if file.user_id != user_id:
-        print(f"DEBUG - file.user_id = {file.user_id}" )
         user_folder = get_user_folders('uploads', file.user_id)
         shared_file = ShareFile.query.filter_by(file_id=file_id, shared_with_user_id=user_id).first()
         if not shared_file:
@@ -269,6 +282,10 @@ def serve_file(file_id):
         flash('File not found on server.', 'danger')
         return redirect(url_for('main.view_files'))
     
+    temp_folder = get_user_folders('temp', user_id)
+    temp_filename = f'{file.filename}_temp'
+    temp_path = os.path.join(temp_folder, temp_filename)
+    
     raw_data = decrypt_file_data(file.fileData, file.key)  # Decrypt file data to ensure key is correct and file is accessible
 
     file_response = make_response(raw_data)
@@ -276,17 +293,26 @@ def serve_file(file_id):
         if file.filetype == '.pdf':
             file_response.mimetype = 'application/pdf'
             file_response.headers['Content-Disposition'] = f'inline; filename="{file.original_filename}"'
+
             username = session.get('username')
             ip_address = get_system_info()
             view_time = datetime.utcnow().isoformat()
-            add_invisible_watermark(file_path, file.filename)
+            watermark_text= f"User: {username}, IP: {ip_address}, Time: {view_time}"
+            insertion_point = pymupdf.Point(-100, -100)
 
-            watermark_entry = Watermark(
-                file_id = file.file_id,
-                watermark_text= f"User: {username}, IP: {ip_address}, Time: {view_time}",
+            embed_text_in_pdf(file_path, temp_path, watermark_text, insertion_point)
+            hash = generate_hmac_hash(raw_data)
+
+            hash = FileHash(
+                user_id = user_id,
+                file_id = file_id,
+                watermark_text = watermark_text,
+                hashValue = hash,
                 created_at=datetime.utcnow()
             )
-            db.session.add(watermark_entry)
+            db.session.add(hash)
+            db.session.commit()
+
         else:
             file_response.mimetype = 'application/octet-stream'
             file_response.headers['Content-Disposition'] = f'attachment; filename="{file.original_filename}"'
@@ -370,10 +396,12 @@ def edit_file(file_id):
 
 @main.route('/delete_file/<int:file_id>', methods=['GET', 'POST'])
 def delete_file(file_id):
+    user_id = session.get('user_id')
     file = File.query.get(file_id)
     recycle_entry = RecycleBin.query.filter_by(file_id=file_id).first()
     if file:
-        filepath = os.path.join(current_app.config['RECYCLE_BIN_FOLDER'], file.filename)
+        user_folder = get_user_folders('recycle', user_id)
+        filepath = os.path.join(user_folder, file.filename)
 
         if os.path.exists(filepath):
             os.remove(filepath)
@@ -394,41 +422,58 @@ def delete_file(file_id):
     
 @main.route('/recycle', methods=['POST'])
 def recycle():
+    user_id = session.get('user_id')
     file_id = request.args.get('file_id')
     file = File.query.get(file_id)
     if file:
+        user_upload_folder = get_user_folders('uploads', user_id)
+        user_recycle_folder = get_user_folders('recycle', user_id)
+
+        if not user_upload_folder or not user_recycle_folder:
+            flash("error retrieving folders", 'danger')
+            return redirect(url_for('main.view_files'))
+        
         file.status = 'recycle_bin'
-        old_path = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename)
-        new_path = os.path.join(current_app.config['RECYCLE_BIN_FOLDER'], file.filename)
-        os.rename(old_path, new_path)
+        old_path = os.path.join(user_upload_folder, file.filename)
+        new_path = os.path.join(user_recycle_folder, file.filename)
+        
+        try:
+            os.rename(old_path, new_path)
 
+            log = auditlog(
+                user_id=session['user_id'],
+                action_type='recycle file',
+                details=f'Moved file ID: {file_id}, filename: {file.original_filename} to recycle bin'
+            )
+            db.session.add(log)
 
-        log = auditlog(
-            user_id=session['user_id'],
-            action_type='recycle file',
-            details=f'Moved file ID: {file_id}, filename: {file.original_filename} to recycle bin'
-        )
-        db.session.add(log)
+            new_recycle_entry = RecycleBin(
+                file_id=file.file_id,
+                filename=file.filename,
+                deleted_by_user_id=session['user_id'],
+                deleted_at=datetime.utcnow()
+            )
+            db.session.add(new_recycle_entry)
+            db.session.commit()
 
-        new_recycle_entry = RecycleBin(
-            file_id=file.file_id,
-            filename=file.filename,
-            deleted_by_user_id=session['user_id'],
-            deleted_at=datetime.utcnow()
-        )
-        db.session.add(new_recycle_entry)
-        db.session.commit()
+            flash(f'File "{file.filename}" moved to recycle bin.', 'success')
 
-        flash(f'File "{file.filename}" moved to recycle bin.', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error moving file to recycle bin: {str(e)}', 'danger')
+
     return redirect(url_for('main.view_files'))
 
 @main.route('/restore/<int:file_id>', methods=['GET'])
 def restore_file(file_id):
+    user_id = session.get('user_id')
     file = File.query.get(file_id)
     if file:
         file.status = 'safe'
-        old_path = os.path.join(current_app.config['RECYCLE_BIN_FOLDER'], file.filename)
-        new_path = os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename)
+        user_upload_folder = get_user_folders('uploads', user_id)
+        user_recycle_folder = get_user_folders('recycle', user_id)
+        old_path = os.path.join(user_recycle_folder, file.filename)
+        new_path = os.path.join(user_upload_folder, file.filename)
         os.rename(old_path, new_path)
 
         log = auditlog(
@@ -562,15 +607,11 @@ def upload():
 
             encrypted_file_data, returned_key = encrypt_file_data(raw_file_data, key_string)  # Encrypt file data
 
-            user_folder = get_user_folders('uploads', user_id)
-            print(f"DEBUG - user folder from get_user_folders: {user_folder}")
-            filepath = os.path.join(user_folder, unique_filename)
-            print(f"DEBUG - full filepath: {filepath}")
-            print(f"DEBUG - user_folder exists: {os.path.exists(user_folder)}")
-            print(f"DEBUG - user_folder is directory: {os.path.isdir(user_folder)}")
+            #Saving to temporary folder
+            user_folder = get_user_folders('temp', user_id)
+            temp_filepath = os.path.join(user_folder, unique_filename)
             file.seek(0)
-            file.save(filepath)
-            print(f"DEBUG - File saved, exists: {os.path.exists(filepath)}")
+            file.save(temp_filepath)
 
             new_file = File(
                 user_id=user_id,
@@ -601,20 +642,27 @@ def upload():
 
             # Add watermark if file is a pdf
             if filetype == '.pdf':
-                
-                convert_pdf_to_images(filepath)
-                flash("Pdf conversion completed!")
+                user_id = session.get('user_id')
                 username = session.get('username')
+                user_upload_folder = get_user_folders('uploads', user_id)
+                output_filepath = os.path.join(user_upload_folder, unique_filename)
+
                 ip_address = get_system_info()
                 view_time = datetime.utcnow().isoformat()
-                add_invisible_watermark(filepath, unique_filename)
+                watermark_text= f"User: {username}, IP: {ip_address}, Time: {view_time}",
+                insertion_point = pymupdf.Point(-100, -100)
+                embed_text_in_pdf(temp_filepath, output_filepath, watermark_text, insertion_point)
+                hash = generate_hmac_hash(raw_file_data)
+                print(hash)
 
-                watermark_entry = Watermark(
+                hash = FileHash(
+                    user_id = user_id,
                     file_id = new_file.file_id,
-                    watermark_text= f"User: {username}, IP: {ip_address}, Time: {view_time}",
+                    watermark_text= watermark_text,
+                    hashValue = hash,
                     created_at=datetime.utcnow()
                 )
-                db.session.add(watermark_entry)
+                db.session.add(hash)
 
             # Logging the upload event
             log = auditlog(
@@ -631,6 +679,8 @@ def upload():
             )
             db.session.add(log2)
             db.session.commit()
+
+            os.remove(temp_filepath)
     
             flash(f'File "{original_filename}" uploaded successfully!', 'success')
             return redirect(url_for('main.index'))
@@ -917,81 +967,10 @@ def manage_users():
 
     return render_template('manage_users.html', users=users)
 
-@main.route('/creating_watermark', methods=['POST'])
-def creating_watermark(input_file, output_file, watermark_text):
-    try:
-        # Open the original PDF
-        doc = pymupdf.open(input_file)
-        
-        # Create a watermark image
-        watermark = Image.new('RGBA', (400, 100), (255, 255, 255, 0))
-        draw = ImageDraw.Draw(watermark)
-        font = ImageFont.load_default()
-        draw.text((10, 10), watermark_text, font=font, fill=(255, 0, 0, 128))
-        
-        # Save the watermark as a temporary PNG
-        temp_watermark_path = f'watermark/{filename}.jpg'
-        watermark.save(temp_watermark_path)
-
-        # Apply the watermark to each page of the PDF
-        for page in doc:
-            page.insert_image(page.rect, filename=temp_watermark_path, overlay=True)
-
-        # Save the watermarked PDF
-        doc.save(output_file)
-        
-        # Clean up temporary watermark image
-        os.remove(temp_watermark_path)
-    except Exception as e:
-        print(f"Error creating watermark: {e}")
-
 def get_system_info():
     """Get client's IP address for logging purposes"""
     ip_address = request.remote_addr
     return ip_address
-
-@main.route('/addInvisibleWatermark', methods=['POST'])
-def add_invisible_watermark(input_path, filename):
-    user_id = session.get('user_id')
-
-    ip_address = get_system_info()
-    print(ip_address)
-    viewing_time = datetime.now().isoformat()
-    username = session.get('username')
-    watermark = {
-        'username': username,
-        'ip': ip_address,
-        'time': viewing_time
-    }
-    watermark_json = json.dumps(watermark)
-    watermark_b64 = base64.b64encode(watermark_json.encode()).decode()  # Encode watermark text to base64 to ensure it can be safely embedded
-
-    with Pdf.open(input_path, allow_overwriting_input=True) as file:
-        if file.Root is None:
-            file.Root = Dictionary()
-        if file.docinfo is None:
-            file.docinfo = Dictionary()
-        file.docinfo['/Watermark'] = watermark_b64  # Store the watermark in PDF metadata (invisible to users but can be extracted later)
-        file.docinfo['/WatermarkJSON'] = watermark_json
-        file.save()  # Save changes to the original file or a new file as needed
-
-    print(f"✓ Invisible watermark embedded successfully")
-    print(f"  Username: {username}")
-    print(f"  IP: {ip_address}")
-    print(f"  Time: {viewing_time}")
-    return watermark 
-    
-
-def add_watermark(file_id, watermark_text):
-    file = File.query.get(file_id)
-    if file and file.filetype == '.pdf':
-        try:
-            file = open(os.path.join(current_app.config['UPLOAD_FOLDER'], file.filename), 'rb')
-            reader = PyPDF2.PdfReader(file)
-            page = reader.getPage(0)
-
-        except Exception as e:
-            print(f"Error adding watermark: {e}")
 
 @main.route('/change_settings', methods=['POST'])
 def change_settings():
@@ -1015,17 +994,10 @@ def change_settings():
             db.session.commit()
             flash('Password changed successfully.', 'success')
 
-def convert_pdf_to_images(pdf_path):
-    user_id = session.get('user_id')
-    user_folder = get_user_folders('pdf_convert_to_images', user_id)
+def embed_text_in_pdf(input_path, output_path, text, point):
+    file = pymupdf.open(input_path)
+    page = file[0]
 
-    doc = pymupdf.open(pdf_path)
-    for page in range(len(doc)):
-        image = doc.load_page(page)
-        pix = image.get_pixmap()
-        output_path = os.path.join(user_folder, f"page-{page+1}.jpeg")
-        pix.save(output_path)
-    doc.close()
-    
-    return user_folder
-
+    page.insert_text(point, text, fontsize=12, color=(0, 0, 0, 0.5)) 
+    file.save(output_path)
+    file.close()

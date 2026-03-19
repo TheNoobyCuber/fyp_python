@@ -62,11 +62,13 @@ class RecycleBin(db.Model):
     deleted_by_user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
     deleted_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-class Watermark(db.Model):
-    __tablename__ = 'Watermark'
-    watermark_id = db.Column(db.Integer, primary_key=True)
+class FileHash(db.Model):
+    __tablename__ = 'FileHash'
+    hash_id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
     file_id = db.Column(db.Integer, db.ForeignKey('File.file_id'))
     watermark_text = db.Column(db.String(255), nullable=False)
+    hashValue = db.Column(db.String(255), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 class AuditLog(db.Model):

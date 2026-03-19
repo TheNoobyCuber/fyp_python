@@ -65,12 +65,16 @@ CREATE TABLE RecycleBin (
     FOREIGN KEY (deleted_by_user_id) REFERENCES User(ID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE TABLE Watermark (
-    watermark_id INT PRIMARY KEY AUTO_INCREMENT,
-    file_id INT,
+CREATE TABLE FileHash (
+    hash_id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    file_id INT NOT NULL,
     watermark_text VARCHAR(255) NOT NULL,
+    HashValue VARCHAR(255) NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES User(ID) ON DELETE CASCADE,
     FOREIGN KEY (file_id) REFERENCES File(file_id) ON DELETE CASCADE
+    
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Insert admin user

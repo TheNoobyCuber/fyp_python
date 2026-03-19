@@ -7,8 +7,7 @@ flask-mail==0.9.1     # OTP
 
 WTForms==3.1.2
 
-# Database driver (choose one)
-pymysql==1.0.3      # For MySQL
+pymysql==1.0.3      # MySQL
 
 # Security
 cryptography==41.0.4
