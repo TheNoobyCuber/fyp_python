@@ -65,7 +65,7 @@
                 {% elif file.filetype == '.doc' or file.filetype == '.docx' %}
                 <hr>
                 <h4>File Content:</h4>
-                <div class="doc-container mt-3">
+                <div class="pdf-container mt-3">
                     <iframe 
                     src="{{ url_for('main.serve_file', file_id=file.file_id) }}" 
                     frameborder="0"
@@ -94,3 +94,4 @@
 
 </body>
 </html>
+

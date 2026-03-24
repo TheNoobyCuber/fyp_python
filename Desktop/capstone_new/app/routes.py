@@ -14,11 +14,8 @@ from datetime import datetime, timedelta
 import random 
 from flask_mail import Mail, Message
 import pymupdf
-import pathlib
-import PyPDF2
-import json
-import socket
-from pikepdf import Pdf, Name, String, Dictionary, Array, Stream
+import subprocess
+# from groupdocs.viewer import Viewer
 
 ALLOWED_FILE_EXTENSIONS = ['.txt', '.pdf', '.doc', '.docx', '.xls', '.xlsx']
 auth = Blueprint('auth', __name__)
@@ -106,12 +103,12 @@ def get_user_folders(type='uploads', user_id=None):
             user_id = session.get('user_id')
             if not user_id:
                 flash('You need to login before proceeding.')
-                return render_template('login.html')
+                return None
         
         config_folders = {
-            'pdf_convert_to_images':  'CONVERT_PDF_FOLDER',
             'uploads': 'UPLOAD_FOLDER',
-            'temp': 'TEMP_FOLDER'
+            'recycle': 'RECYCLE_BIN_FOLDER',
+            'serve': 'SERVE_FOLDER'
         }
 
         config_folder = config_folders.get(type, type.upper() + 'FOLDER')
@@ -170,6 +167,85 @@ def admin():
     admin_logs = AuditLog.query.filter_by(user_id=user_id).order_by(AuditLog.timestamp.desc()).limit(20).all()
     registered_users = User.query.order_by(User.created_at.desc()).limit(5).all()
     return render_template('admin_dashboard.html', registered_users=registered_users, logs=admin_logs)
+
+def convert_doc_to_pdf(filename, input_path, output_path=None):
+
+    if filename is None:
+        print(f'Filename does not exist.')
+        return None
+    
+    try:
+        # Check if input file exists
+        if not os.path.exists(input_path):
+            print(f"Input file does not exist: {input_path}")
+            return None
+
+        # If output_path not specified, use same name with .pdf
+        if output_path is None:
+            output_path = os.path.splitext(input_path)[0] + '.pdf'
+
+        #get directory of output file
+        output_dir = os.path.dirname(output_path)
+        os.makedirs(output_dir, exist_ok=True)
+
+        libreoffice_path = '/Applications/LibreOffice.app/Contents/MacOS/soffice'
+        libreoffice_cmd = libreoffice_path
+        
+        if not libreoffice_cmd:
+            # Try which command to find libreoffice
+            try:
+                which_result = subprocess.run(['which', 'libreoffice'], 
+                                            capture_output=True, text=True)
+                if which_result.returncode == 0:
+                    libreoffice_cmd = which_result.stdout.strip()
+            except:
+                pass
+        
+        if not libreoffice_cmd:
+            print("DEBUG: LibreOffice not found. Please install from https://www.libreoffice.org/")
+            print("DEBUG: Or create symlink: sudo ln -s /Applications/LibreOffice.app/Contents/MacOS/soffice /usr/local/bin/libreoffice")
+            return None
+        
+        print(f"DEBUG: Using LibreOffice at: {libreoffice_cmd}")
+
+        cmd = [
+                libreoffice_cmd,
+                '--headless',  # Run without GUI
+                '--convert-to', 'pdf',
+                '--outdir', output_dir,
+                input_path
+            ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+        
+        if result.returncode == 0:
+            # LibreOffice creates file in output_dir with original name + .pdf
+            basename = os.path.splitext(os.path.basename(input_path))[0]
+            converted_pdf = os.path.join(output_dir, basename + '.pdf')
+
+            if os.path.exists(converted_pdf):
+                print(f"Converted PDF created at: {converted_pdf}")
+
+                # If output_path is different, rename/move it
+                if converted_pdf != output_path:
+                    if os.path.exists(output_path):
+                        os.remove(output_path)
+                    os.rename(converted_pdf, output_path)
+                
+                return output_path
+            else:
+                print(f'pdf not found at {converted_pdf}')   
+                return None
+        
+        else:
+            print(f"Conversion failed: {result.returncode}")
+            return None
+    
+    except Exception as e:
+        flash(f'An error occured.')
+        import traceback
+        traceback.print_exc()
+        return redirect(url_for('main.view_files'))
 
 
 @main.route('/files', methods=['GET'])
@@ -234,19 +310,40 @@ def view_file(file_id):
     key = file.key
     raw_data = decrypt_file_data(file.fileData, key)  # Decrypt file data to ensure key is correct and file is accessible
 
-    
     log = auditlog(
         user_id=session['user_id'],
         action_type='view file',
         details=f'Viewed file ID: {file_id}, filename: {file.original_filename}'
     )
     db.session.add(log)
-    db.session.commit()
     
     
     if file.filetype == '.txt':
         decrypted_content = decrypt_file_data(file.fileData, file.key).decode('utf-8') # Assuming the original file is UTF-8 encoded text
+        with open(file_path, 'rb') as f:
+            content = f.read()
+        hash = generate_hmac_hash(content)
+        print(hash)
+
+        username = session.get('username')
+        ip_address = get_system_info
+        view_time = datetime.utcnow().isoformat
+
+        hash = FileHash(
+            user_id = user_id,
+            file_id = file_id,
+            watermark_text = f"User: {username}, IP: {ip_address}, Time: {view_time}",
+            hashValue = hash,
+            created_at=datetime.utcnow()
+        )
+        db.session.add(hash)
+        db.session.commit()
+
         return render_template('view_file.html', file=file, file_id=file_id, content=decrypted_content)
+    
+    elif file.filetype in ['.doc', '.docx']:
+        serve_file(file_id)
+        return render_template('view_file.html', file=file, file_id=file_id)
 
     return render_template('view_file.html', file=file, file_id=file_id, content=raw_data)
 
@@ -282,9 +379,9 @@ def serve_file(file_id):
         flash('File not found on server.', 'danger')
         return redirect(url_for('main.view_files'))
     
-    temp_folder = get_user_folders('temp', user_id)
-    temp_filename = f'{file.filename}_temp'
-    temp_path = os.path.join(temp_folder, temp_filename)
+    serve_folder = get_user_folders('serve', user_id)
+    temp_filename = f'{file.filename}_serve'
+    temp_path = os.path.join(serve_folder, temp_filename)
     
     raw_data = decrypt_file_data(file.fileData, file.key)  # Decrypt file data to ensure key is correct and file is accessible
 
@@ -313,11 +410,43 @@ def serve_file(file_id):
             db.session.add(hash)
             db.session.commit()
 
-        else:
-            file_response.mimetype = 'application/octet-stream'
-            file_response.headers['Content-Disposition'] = f'attachment; filename="{file.original_filename}"'
+        elif file.filetype in ['.doc', '.docx']:
+            # Convert Word document to PDF for viewing
+            serve_folder = get_user_folders('serve', user_id)
+            pdf_filename = f'{file.filename}_preview.pdf'
+            pdf_path = os.path.join(serve_folder, pdf_filename)
+            # Check if PDF preview already exists
+            if not os.path.exists(pdf_path):
+                converted_pdf = convert_doc_to_pdf(file.original_filename, file_path, pdf_path)
+
+                if not converted_pdf:
+                    flash('Could not convert document to view', 'danger')
+                    return redirect(url_for('main.view_files'))
+            else:
+                pass
+            # Read the converted PDF
+            with open(pdf_path, 'rb') as f:
+                pdf_content = f.read()
+            
+            file_response = make_response(pdf_content)
+            file_response.mimetype = 'application/pdf'
+            # Clean filename for header
+            # Add watermark
+            # Create watermarked version of the pdf
+            # read the watermarked pdf
+            # generate hash            
+            
+            pass
+
+        # elif file.filetype in ['.doc', '.docx']:
+        #     if file.filetype == '.doc':
+        #         file_response.mimetype = 'application/pdf'
+        #     else:
+        #         file_response.mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+        #     file_response.headers['Content-Disposition'] = f'inline; filename="{file.original_filename}"'
         
-        file_response.headers['Content-Length'] = len(raw_data)
+        # file_response.headers['Content-Length'] = len(raw_data)
         
         return file_response
         #     return send_from_directory(current_app.config['UPLOAD_FOLDER'], file.filename, as_attachment=False, mimetype='application/pdf')
@@ -423,6 +552,11 @@ def delete_file(file_id):
 @main.route('/recycle', methods=['POST'])
 def recycle():
     user_id = session.get('user_id')
+
+    if not user_id:
+        flash("Please Login first before proceeding.")
+        return redirect(url_for(auth.login))
+    
     file_id = request.args.get('file_id')
     file = File.query.get(file_id)
     if file:
@@ -576,7 +710,7 @@ def upload():
             
             if not shared_with:
                 flash('Please specify at least one user to share the file with.', 'danger')
-                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
+                #os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
                 return render_template('uploadfile.html', shared_with=shared_with, 
                                        description=description)
             # Create unique filename
@@ -608,10 +742,10 @@ def upload():
             encrypted_file_data, returned_key = encrypt_file_data(raw_file_data, key_string)  # Encrypt file data
 
             #Saving to temporary folder
-            user_folder = get_user_folders('temp', user_id)
-            temp_filepath = os.path.join(user_folder, unique_filename)
+            user_folder = get_user_folders('uploads', user_id)
+            upload_path = os.path.join(user_folder, unique_filename)
             file.seek(0)
-            file.save(temp_filepath)
+            file.save(upload_path)
 
             new_file = File(
                 user_id=user_id,
@@ -629,30 +763,26 @@ def upload():
             )
             db.session.add(new_file)
             db.session.flush()  # Get new_file.file_id before commit
-            
 
-            share_file = ShareFile( #Add entry to ShareFile table
-                file_id=new_file.file_id,
-                shared_with_user_id=shared_with_user_id,
-                shared_by_user_id=session['user_id'],
-                description=description,
-                shared_at=datetime.utcnow()
-            )
-            db.session.add(share_file)
+            user_serve_folder = get_user_folders('serve', user_id)
+            serve_filepath = os.path.join(user_serve_folder, unique_filename)
+
+            user_uploads_folder = get_user_folders('uploads', user_id)
+            upload_filepath = os.path.join(user_uploads_folder, unique_filename)
 
             # Add watermark if file is a pdf
             if filetype == '.pdf':
                 user_id = session.get('user_id')
                 username = session.get('username')
-                user_upload_folder = get_user_folders('uploads', user_id)
-                output_filepath = os.path.join(user_upload_folder, unique_filename)
 
                 ip_address = get_system_info()
                 view_time = datetime.utcnow().isoformat()
                 watermark_text= f"User: {username}, IP: {ip_address}, Time: {view_time}",
                 insertion_point = pymupdf.Point(-100, -100)
-                embed_text_in_pdf(temp_filepath, output_filepath, watermark_text, insertion_point)
-                hash = generate_hmac_hash(raw_file_data)
+                embed_text_in_pdf(upload_path, serve_filepath, watermark_text, insertion_point)
+                with open(serve_filepath, 'rb') as f:
+                    content = f.read()
+                hash = generate_hmac_hash(content)
                 print(hash)
 
                 hash = FileHash(
@@ -663,6 +793,45 @@ def upload():
                     created_at=datetime.utcnow()
                 )
                 db.session.add(hash)
+
+            elif filetype in ['.doc', '.docx']:
+                print(f"Saving original Word document to: {upload_filepath}")
+                file.seek(0)  # Reset file pointer to beginning
+                file.save(upload_filepath)
+
+                if os.path.exists(upload_filepath) and os.path.getsize(upload_filepath) > 0:
+                    print(f"✓ File saved successfully. Size: {os.path.getsize(upload_filepath)} bytes")
+                
+                    try:
+                        pdf_output = os.path.splitext(upload_filepath)[0] + '.pdf'
+                        print(f"DEBUG: Attempting to convert to PDF: {pdf_output}")
+
+                        converted_file = convert_doc_to_pdf(pdf_output, upload_filepath, serve_filepath)
+                        if converted_file:
+                            print(f"✓ PDF preview created: {converted_file}")
+                    except Exception as e:
+                        print(f"PDF conversion skipped: {e}")
+                else:
+                    print(f"✗ ERROR: File not saved properly!")
+                    raise Exception("Failed to save file to disk")
+
+            elif filetype == '.txt':
+                file.seek(0)
+                file.save(serve_filepath)
+
+                with open(serve_filepath, 'rb') as f:
+                    content = f.read()
+                hash = generate_hmac_hash(content)
+                print(hash)
+
+            share_file = ShareFile( #Add entry to ShareFile table
+                file_id=new_file.file_id,
+                shared_with_user_id=shared_with_user_id,
+                shared_by_user_id=session['user_id'],
+                description=description,
+                shared_at=datetime.utcnow()
+            )
+            db.session.add(share_file)
 
             # Logging the upload event
             log = auditlog(
@@ -679,8 +848,6 @@ def upload():
             )
             db.session.add(log2)
             db.session.commit()
-
-            os.remove(temp_filepath)
     
             flash(f'File "{original_filename}" uploaded successfully!', 'success')
             return redirect(url_for('main.index'))
