@@ -20,10 +20,12 @@ CREATE TABLE File (
     user_id INT NOT NULL,
     filename VARCHAR(255) NOT NULL,     
     original_filename VARCHAR(255) NOT NULL,  -- Original filename
-    filetype VARCHAR(50) NOT NULL,  -- File type
+    file_type VARCHAR(50) NOT NULL,  -- File type
     file_size BIGINT NOT NULL,    -- Original file size in bytes
-    fileData LONGBLOB NOT NULL,  -- Encrypted file data
-    `key` VARCHAR(255) NOT NULL,   -- Encryption key
+    file_data LONGBLOB NOT NULL,  -- Encrypted file data
+    encryption_key VARCHAR(255) NOT NULL,   -- Encryption key
+    `key` VARCHAR(128) NOT NULL,  -- Key for Doc editing  
+    file_reference_key VARCHAR(128) NOT NULL,  -- Reference file Key for Doc editing 
     description TEXT,      -- 32-byte random
     shared_with TEXT,   -- 32-byte random
     upload_time DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -75,6 +77,16 @@ CREATE TABLE FileHash (
     FOREIGN KEY (user_id) REFERENCES User(ID) ON DELETE CASCADE,
     FOREIGN KEY (file_id) REFERENCES File(file_id) ON DELETE CASCADE
     
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE Edit (
+    edit_id INT PRIMARY KEY AUTO_INCREMENT,
+    file_id INT NOT NULL,
+    user_id INT NOT NULL,
+    doc_key VARCHAR(255) NOT NULL,
+    FOREIGN KEY (file_id) REFERENCES File(file_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES User(ID) ON DELETE CASCADE
+
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Insert admin user

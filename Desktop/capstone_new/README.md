@@ -39,6 +39,11 @@ pip install -r requirements.txt
 1. Start XAMPP and run MySQL server
 2. import dlps.sql
 
+### 5. Docker Setup
+```bash
+sudo docker run -i -t -d -p 80:80 --restart=always JWT_SECRET=my_jwt_secret onlyoffice/documentserver
+```
+
 
 ## Running the Application
 ### 1. Start Development Server

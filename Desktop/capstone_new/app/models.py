@@ -34,10 +34,12 @@ class File(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
     filename = db.Column(db.String(200), nullable=False)
     original_filename = db.Column(db.String(200), nullable=False)
-    filetype = db.Column(db.String(10), nullable=False)
+    file_type = db.Column(db.String(10), nullable=False)
     file_size = db.Column(db.Integer)
-    fileData = db.Column(db.LargeBinary, nullable=False)  # Store file data as binary
-    key = db.Column(db.String(255), nullable=False)  # Store encryption key
+    file_data = db.Column(db.LargeBinary, nullable=False)  # Store file data as binary
+    encryption_key = db.Column(db.String(255), nullable=False)  # Store encryption key
+    key = db.Column(db.String(128), nullable=False)
+    file_reference_key = db.Column(db.String(128), nullable=False)
     description = db.Column(db.Text)
     shared_with = db.Column(db.String(255))
     upload_time = db.Column(db.DateTime, default=datetime.utcnow)
@@ -79,3 +81,11 @@ class AuditLog(db.Model):
     details = db.Column(db.Text)  # Additional details about the action
     status = db.Column(db.String(50), default='success')  # success, failed
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Edit(db.Model):
+    __tablename__ = 'Edit'
+    edit_id = db.Column(db.Integer, primary_key=True)
+    file_id = db.Column(db.Integer, db.ForeignKey('File.file_id'))
+    user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
+    doc_key = db.Column(db.String(255), nullable=False)
+    

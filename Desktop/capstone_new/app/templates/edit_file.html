@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
     <!-- Bootstrap JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Include the ONLYOFFICE API script -->
+    <script type="text/javascript" src="https://documentserver/web-apps/apps/api/documents/api.js"></script>
 </head>
 <body>
     <div class="container mt-4">
@@ -22,7 +24,7 @@
         </div>
         <div class="card-body">
             <form method="POST" action="{{ url_for('main.edit_file', file_id=file.file_id) }}">
-                {%if file.filetype == '.txt' and file_content %}
+                {% if file.file_type == '.txt' and file_content %}
                 <div class="mb-3">
                     <label for="content" class="form-label">File Content</label>
                     <textarea class="form-control" id="content" name="content" rows="20" 
@@ -40,7 +42,48 @@
             <small>Last modified: {{ file.upload_time.strftime('%Y-%m-%d %H:%M') }}</small>
         </div>
         {% endif %}
-    </div>
-</div>
+        {% if file.file_type in ['.doc', '.docx'] %}
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('main.edit_file', file_id=file.file_id) }}">
+        <div class="mb-3">
+            <label for="content" class="form-label">File Content</label>
+            <!-- 2. Create a div where the editor will appear -->
+            <div id="editor">
+                
+            </div>
+        </div>
+        {% endif %}
 </body>
 </html>
+
+<script type="text/javascript" 
+    src="http://localhost:8081/web-apps/apps/api/documents/api.js">
+</script>
+    
+<script>
+    const config = {
+        "document": {
+            "fileType": filename.split('.')[-1],
+            "key": doc_key, // unique document identifier used by the service to recognize the document
+            "title": filename,
+            "url": doc_url,
+            referenceData: {
+                fileKey: "BCFA2CED", // unique document identifier used by the service to get a link to the file
+                instanceId: "http://localhost:8081",
+            },
+            "permissions": {
+                "edit": True,
+                "download": True,
+                "print": False
+            }
+        },
+        "documentType": 'word',
+        "editorConfig": {
+            "user": current_user,
+            "callbackUrl": str(callback_url),
+            "mode": "edit"
+        }
+    }
+    // Initialize the ONLYOFFICE editor
+    new DocsAPI.DocEditor("editor", config);
+</script>

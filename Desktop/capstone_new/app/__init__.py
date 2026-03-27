@@ -40,10 +40,10 @@ def create_app():
     #Upload and Upload folder configuration
     app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)),  'secure_uploads/')
     app.config['RECYCLE_BIN_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)),  'recycle_bin/')
-    app.config['SERVE_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)),  'serve/')
+    app.config['TEMP_FOLDER'] = os.path.join(os.path.dirname(os.path.abspath(__file__)),  'temp/')
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['RECYCLE_BIN_FOLDER'], exist_ok=True)
-    os.makedirs(app.config['SERVE_FOLDER'], exist_ok=True)
+    os.makedirs(app.config['TEMP_FOLDER'], exist_ok=True)
     app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB limit
 
     #Mail configuration 
@@ -56,6 +56,10 @@ def create_app():
 
     db.init_app(app)
     mail.init_app(app)
+
+    # OnlyOffice API configuration
+    # app.config['ONLYOFFICE_URL'] = 'http://localhost:8080'
+    # app.config['JWT_SECRET'] = 'my_jwt_secret'
     
     # Register the blueprint
     from app.routes import auth ,main  # Must be imported here to avoid circular dependencies

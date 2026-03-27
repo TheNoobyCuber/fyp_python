@@ -43,24 +43,43 @@
                     <tbody>
                         {% for file in files %}
                             {% if file.status != 'recycle_bin' %}
-                        <tr>
-                            <td>{{ file.file_id }}</td>
-                            <td>{{ file.original_filename }}</td>
-                            <td>{{ file.uploaded_by_username }}</td>
-                            <td>{{ file.upload_time }}</td>
-                            <td>                            
-                                <a href="{{ url_for('main.view_file', file_id=file.file_id) }}" 
-                                    class="btn btn-primary bi bi-eye"> View</a>
-                                <a href="{{ url_for('main.edit_file', file_id=file.file_id) }}" 
-                                class="btn btn-secondary bi bi-pencil"> Edit</a>
-                                <a href="{{ url_for('main.share_file', file_id=file.file_id) }}" 
-                                class="btn btn-success bi bi-share"> Share</a>
-                                <form action="{{ url_for('main.recycle', file_id=file.file_id) }}" method="POST" class="d-inline">
-                                    <button type="submit" class="btn btn-danger bi bi-trash" 
-                                    onclick="return confirm('Are you sure you want to move this file to the recycle bin?')"> Move to Recycle Bin</button>
-                                </form>
-                            </td>
-                        </tr>
+                                {% if file.file_type == '.pdf' %}
+                                    <tr>
+                                        <td>{{ file.file_id }}</td>
+                                        <td>{{ file.original_filename }}</td>
+                                        <td>{{ file.uploaded_by_username }}</td>
+                                        <td>{{ file.upload_time }}</td>
+                                        <td>                            
+                                            <a href="{{ url_for('main.view_file', file_id=file.file_id) }}" 
+                                                class="btn btn-primary bi bi-eye"> View</a>
+                                            <a href="{{ url_for('main.share_file', file_id=file.file_id) }}" 
+                                            class="btn btn-success bi bi-share"> Share</a>
+                                            <form action="{{ url_for('main.recycle', file_id=file.file_id) }}" method="POST" class="d-inline">
+                                                <button type="submit" class="btn btn-danger bi bi-trash" 
+                                                onclick="return confirm('Are you sure you want to move this file to the recycle bin?')"> Move to Recycle Bin</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                {% else %}
+                                <tr>
+                                    <td>{{ file.file_id }}</td>
+                                    <td>{{ file.original_filename }}</td>
+                                    <td>{{ file.uploaded_by_username }}</td>
+                                    <td>{{ file.upload_time }}</td>
+                                    <td>                            
+                                        <a href="{{ url_for('main.view_file', file_id=file.file_id) }}" 
+                                            class="btn btn-primary bi bi-eye"> View</a>
+                                        <a href="{{ url_for('main.edit_file', file_id=file.file_id) }}" 
+                                        class="btn btn-secondary bi bi-pencil"> Edit</a>
+                                        <a href="{{ url_for('main.share_file', file_id=file.file_id) }}" 
+                                        class="btn btn-success bi bi-share"> Share</a>
+                                        <form action="{{ url_for('main.recycle', file_id=file.file_id) }}" method="POST" class="d-inline">
+                                            <button type="submit" class="btn btn-danger bi bi-trash" 
+                                            onclick="return confirm('Are you sure you want to move this file to the recycle bin?')"> Move to Recycle Bin</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endif %}
                             {% endif %}
                         {% endfor %}
                     </tbody>
@@ -95,6 +114,20 @@
                 </thead>
                 <tbody>
                     {% for file in shared_files %}
+                    {% if file.file_type == '.pdf' %}
+                    <tr>
+                        <td>{{ file.file_id }}</td>
+                        <td>{{ file.original_filename }}</td>
+                        <td>{{ file.uploaded_by_username }}</td>
+                        <td>{{ file.upload_time }}</td>
+                        <td>                            
+                            <a href="{{ url_for('main.view_file', file_id=file.file_id) }}" 
+                                class="btn btn-primary bi bi-eye"> View</a>
+                            <a href="{{ url_for('main.share_file', file_id=file.file_id) }}" 
+                            class="btn btn-success bi bi-share"> Share</a>
+                        </td>
+                    </tr>
+                    {% else %}
                     <tr>
                         <td>{{ file.file_id }}</td>
                         <td>{{ file.original_filename }}</td>
@@ -109,6 +142,7 @@
                             class="btn btn-success bi bi-share"> Share</a>
                         </td>
                     </tr>
+                    {% endif %}
                     {% endfor %}
                 </tbody>
                 {% else %}

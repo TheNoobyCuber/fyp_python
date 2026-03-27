@@ -20,6 +20,8 @@ Pillow==12.1.1
 PyWavelets==1.9.0
 groupdocs-viewer-net==25.12
 Libreoffice==26.2.1.2
+PyJWT==2.12.1
+
 # Pattern matching
 regex==2023.6.3
 

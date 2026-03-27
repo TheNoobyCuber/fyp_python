@@ -9,15 +9,22 @@ from flask_sqlalchemy import query
 from cryptography.fernet import Fernet
 from sqlalchemy.exc import SQLAlchemyError
 from wtforms import ValidationError
-from .models import AuditLog, File, RecycleBin, ShareFile, User, FileHash, db
+from .models import AuditLog, File, RecycleBin, ShareFile, User, FileHash, Edit, db
 from datetime import datetime, timedelta
 import random 
 from flask_mail import Mail, Message
 import pymupdf
 import subprocess
+import requests
+import uuid # Universally Unique Identifiers
+import jwt # Used in Docker
+import secrets # Used for jwt
 # from groupdocs.viewer import Viewer
 
 ALLOWED_FILE_EXTENSIONS = ['.txt', '.pdf', '.doc', '.docx', '.xls', '.xlsx']
+ONLYOFFICE_URL = 'http://localhost:8080' # OnlyOffice API configuration
+JWT_SECRET = '22077237D_capstone_project_jwt_secret_key' # OnlyOffice API configuration
+
 auth = Blueprint('auth', __name__)
 main = Blueprint('main', __name__)
 
@@ -37,23 +44,23 @@ def generate_hmac_hash(file_content, key=None):
     print(f"HMAC-SHA256 (Hex): {hex_hash}")
     return hex_hash
 
-def encrypt_file_data(file_data, key=None):
-    if key is None:
-        key = generate_prng()  # Generate a new key if not provided
-    elif isinstance(key, str):
-        key = key.encode('utf-8') # Convert string key back to bytes
+def encrypt_file_data(file_data, encryption_key=None):
+    if encryption_key is None:
+        encryption_key = generate_prng()  # Generate a new key if not provided
+    elif isinstance(encryption_key, str):
+        encryption_key = encryption_key.encode('utf-8') # Convert string key back to bytes
     
-    var = Fernet(key)
+    var = Fernet(encryption_key)
     encrypted_data = var.encrypt(file_data)
-    return encrypted_data, key
+    return encrypted_data, encryption_key
 
-def decrypt_file_data(encrypted_data, key):
-    if isinstance(key, str):
-        key = key.encode('utf-8') # Convert string key back to bytes
+def decrypt_file_data(encrypted_data, encryption_key):
+    if isinstance(encryption_key, str):
+        encryption_key = encryption_key.encode('utf-8') # Convert string key back to bytes
     else:
-        key = key
+        encryption_key = encryption_key
 
-    ciphertext = Fernet(key)
+    ciphertext = Fernet(encryption_key)
     decrypted_data = ciphertext.decrypt(encrypted_data)
     return decrypted_data
 
@@ -108,7 +115,7 @@ def get_user_folders(type='uploads', user_id=None):
         config_folders = {
             'uploads': 'UPLOAD_FOLDER',
             'recycle': 'RECYCLE_BIN_FOLDER',
-            'serve': 'SERVE_FOLDER'
+            'temp': 'TEMP_FOLDER'
         }
 
         config_folder = config_folders.get(type, type.upper() + 'FOLDER')
@@ -168,86 +175,6 @@ def admin():
     registered_users = User.query.order_by(User.created_at.desc()).limit(5).all()
     return render_template('admin_dashboard.html', registered_users=registered_users, logs=admin_logs)
 
-def convert_doc_to_pdf(filename, input_path, output_path=None):
-
-    if filename is None:
-        print(f'Filename does not exist.')
-        return None
-    
-    try:
-        # Check if input file exists
-        if not os.path.exists(input_path):
-            print(f"Input file does not exist: {input_path}")
-            return None
-
-        # If output_path not specified, use same name with .pdf
-        if output_path is None:
-            output_path = os.path.splitext(input_path)[0] + '.pdf'
-
-        #get directory of output file
-        output_dir = os.path.dirname(output_path)
-        os.makedirs(output_dir, exist_ok=True)
-
-        libreoffice_path = '/Applications/LibreOffice.app/Contents/MacOS/soffice'
-        libreoffice_cmd = libreoffice_path
-        
-        if not libreoffice_cmd:
-            # Try which command to find libreoffice
-            try:
-                which_result = subprocess.run(['which', 'libreoffice'], 
-                                            capture_output=True, text=True)
-                if which_result.returncode == 0:
-                    libreoffice_cmd = which_result.stdout.strip()
-            except:
-                pass
-        
-        if not libreoffice_cmd:
-            print("DEBUG: LibreOffice not found. Please install from https://www.libreoffice.org/")
-            print("DEBUG: Or create symlink: sudo ln -s /Applications/LibreOffice.app/Contents/MacOS/soffice /usr/local/bin/libreoffice")
-            return None
-        
-        print(f"DEBUG: Using LibreOffice at: {libreoffice_cmd}")
-
-        cmd = [
-                libreoffice_cmd,
-                '--headless',  # Run without GUI
-                '--convert-to', 'pdf',
-                '--outdir', output_dir,
-                input_path
-            ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
-        
-        if result.returncode == 0:
-            # LibreOffice creates file in output_dir with original name + .pdf
-            basename = os.path.splitext(os.path.basename(input_path))[0]
-            converted_pdf = os.path.join(output_dir, basename + '.pdf')
-
-            if os.path.exists(converted_pdf):
-                print(f"Converted PDF created at: {converted_pdf}")
-
-                # If output_path is different, rename/move it
-                if converted_pdf != output_path:
-                    if os.path.exists(output_path):
-                        os.remove(output_path)
-                    os.rename(converted_pdf, output_path)
-                
-                return output_path
-            else:
-                print(f'pdf not found at {converted_pdf}')   
-                return None
-        
-        else:
-            print(f"Conversion failed: {result.returncode}")
-            return None
-    
-    except Exception as e:
-        flash(f'An error occured.')
-        import traceback
-        traceback.print_exc()
-        return redirect(url_for('main.view_files'))
-
-
 @main.route('/files', methods=['GET'])
 def view_files():
     """View all uploaded files"""
@@ -256,7 +183,7 @@ def view_files():
         return redirect(url_for('auth.login'))
     
     current_user = User.query.get(user_id)
-    current_user_fullname = current_user.fullname
+    current_user_username = current_user.username
     files = File.query.filter_by(user_id=user_id).order_by(File.upload_time.desc()).all()
     shared_files_data = ShareFile.query.filter(ShareFile.shared_with_user_id == user_id).order_by(ShareFile.shared_at.desc()).all()
     shared_files = []
@@ -266,7 +193,7 @@ def view_files():
             shared_files.append(file)
             
     for file in files:
-        file.uploaded_by_username = current_user_fullname
+        file.uploaded_by_username = current_user_username
     for file in shared_files:
         if file.status != 'recycle_bin':
             file.uploaded_by_username = User.query.get(file.user_id).username
@@ -297,18 +224,15 @@ def view_file(file_id):
 
     file_path = os.path.join(user_folder, file.filename)
     if not os.path.exists(file_path):
-        # flash('File not found.', 'danger')
-        # return redirect(url_for('main.view_files'))
-        print(f"File not found at path: {file_path}")  # Debug logging
         flash('File not found on server.', 'danger')
         return redirect(url_for('main.view_files'))
     
-    if file.filetype not in ALLOWED_FILE_EXTENSIONS:
+    if file.file_type not in ALLOWED_FILE_EXTENSIONS:
         flash('Cannot display this file type.', 'warning')
         return redirect(url_for('main.view_files'))
     
-    key = file.key
-    raw_data = decrypt_file_data(file.fileData, key)  # Decrypt file data to ensure key is correct and file is accessible
+    key = file.encryption_key
+    raw_data = decrypt_file_data(file.file_data, key)  # Decrypt file data to ensure key is correct and file is accessible
 
     log = auditlog(
         user_id=session['user_id'],
@@ -317,9 +241,8 @@ def view_file(file_id):
     )
     db.session.add(log)
     
-    
-    if file.filetype == '.txt':
-        decrypted_content = decrypt_file_data(file.fileData, file.key).decode('utf-8') # Assuming the original file is UTF-8 encoded text
+    if file.file_type == '.txt':
+        decrypted_content = decrypt_file_data(file.file_data, file.encryption_key).decode('utf-8') # Assuming the original file is UTF-8 encoded text
         with open(file_path, 'rb') as f:
             content = f.read()
         hash = generate_hmac_hash(content)
@@ -341,7 +264,7 @@ def view_file(file_id):
 
         return render_template('view_file.html', file=file, file_id=file_id, content=decrypted_content)
     
-    elif file.filetype in ['.doc', '.docx']:
+    elif file.file_type in ['.doc', '.docx', '.pdf']:
         serve_file(file_id)
         return render_template('view_file.html', file=file, file_id=file_id)
 
@@ -373,21 +296,18 @@ def serve_file(file_id):
     print(f"DEBUG - filepath: {file_path}")
 
     if not os.path.exists(file_path):
-        # flash('File not found.', 'danger')
-        # return redirect(url_for('main.view_files'))
-        print(f"File not found at path: {file_path}")  # Debug logging
         flash('File not found on server.', 'danger')
         return redirect(url_for('main.view_files'))
     
-    serve_folder = get_user_folders('serve', user_id)
+    serve_folder = get_user_folders('uploads', user_id)
     temp_filename = f'{file.filename}_serve'
     temp_path = os.path.join(serve_folder, temp_filename)
     
-    raw_data = decrypt_file_data(file.fileData, file.key)  # Decrypt file data to ensure key is correct and file is accessible
+    raw_data = decrypt_file_data(file.file_data, file.encryption_key)  # Decrypt file data to ensure key is correct and file is accessible
 
     file_response = make_response(raw_data)
     try:
-        if file.filetype == '.pdf':
+        if file.file_type == '.pdf':
             file_response.mimetype = 'application/pdf'
             file_response.headers['Content-Disposition'] = f'inline; filename="{file.original_filename}"'
 
@@ -410,32 +330,7 @@ def serve_file(file_id):
             db.session.add(hash)
             db.session.commit()
 
-        elif file.filetype in ['.doc', '.docx']:
-            # Convert Word document to PDF for viewing
-            serve_folder = get_user_folders('serve', user_id)
-            pdf_filename = f'{file.filename}_preview.pdf'
-            pdf_path = os.path.join(serve_folder, pdf_filename)
-            # Check if PDF preview already exists
-            if not os.path.exists(pdf_path):
-                converted_pdf = convert_doc_to_pdf(file.original_filename, file_path, pdf_path)
-
-                if not converted_pdf:
-                    flash('Could not convert document to view', 'danger')
-                    return redirect(url_for('main.view_files'))
-            else:
-                pass
-            # Read the converted PDF
-            with open(pdf_path, 'rb') as f:
-                pdf_content = f.read()
-            
-            file_response = make_response(pdf_content)
-            file_response.mimetype = 'application/pdf'
-            # Clean filename for header
-            # Add watermark
-            # Create watermarked version of the pdf
-            # read the watermarked pdf
-            # generate hash            
-            
+        elif file.file_type in ['.doc', '.docx']: 
             pass
 
         # elif file.filetype in ['.doc', '.docx']:
@@ -458,19 +353,19 @@ def serve_file(file_id):
         return redirect(url_for('main.view_files'))
 
 @main.route('/edit_file/<int:file_id>', methods=['GET', 'POST'])
-def edit_file(file_id):
+def edit_file(file_id): #Edit function for .txt
     user_id = session.get('user_id')
     file = File.query.get(file_id)
-    shared_file = ShareFile.query.filter_by(file_id=file_id, shared_with_user_id=session['user_id']).first()
+    shared_file = ShareFile.query.filter_by(file_id=file_id, shared_with_user_id=user_id).first()
 
     if not file:
         flash('File not found.', 'danger')
         return redirect(url_for('main.view_files'))
     
-    if shared_file is None and file.user_id != session['user_id']:
+    if shared_file is None and file.user_id != user_id:
         flash('You do not have permission to edit this file.', 'danger')
         log = auditlog(
-            user_id=session['user_id'],
+            user_id=user_id,
             action_type='edit file',
             details=f'Unauthorized edit attempt for file ID: {file_id}, filename: {file.original_filename}',
             status='failed'
@@ -479,8 +374,16 @@ def edit_file(file_id):
         db.session.commit()
         return redirect(url_for('main.view_files'))
     
-    if file.filetype == '.txt':
-        user_folder = get_user_folders('uploads', user_id)
+    if file.file_type == '.txt':
+        if file.user_id == user_id:
+            print(f'The user id of this file is {user_id}.')
+            user_folder = get_user_folders('uploads', user_id)
+
+        else:
+            uploader_id = file.user_id
+            print(f'The user id of this file is {uploader_id}.')
+            user_folder = get_user_folders('uploads', uploader_id)
+        
         file_path = os.path.join(user_folder, file.filename)
 
         if not os.path.exists(file_path):
@@ -489,7 +392,7 @@ def edit_file(file_id):
 
         if request.method == 'GET': #Handle GET Request = display file content
             # decrypt original file data
-            decrypted_file_data = decrypt_file_data(file.fileData, file.key)
+            decrypted_file_data = decrypt_file_data(file.file_data, file.encryption_key)
             file_content = decrypted_file_data.decode('utf-8')  # Assuming the original file is UTF-8 encoded text
             return render_template('edit_file.html', file=file, file_id=file_id, file_content=file_content)
         
@@ -498,8 +401,8 @@ def edit_file(file_id):
             try:
                 # Write new content to file
                 new_content_bytes = new_content.encode('utf-8')
-                encrypted_content, _ = encrypt_file_data(new_content_bytes, file.key)  # Encrypt new content
-                file.fileData = encrypted_content  # Update file data with encrypted content
+                encrypted_content, _ = encrypt_file_data(new_content_bytes, file.encryption_key)  # Encrypt new content
+                file.file_data = encrypted_content  # Update file data with encrypted content
 
                 with open(file_path, 'wb') as f:
                     f.write(new_content_bytes)  # Save new content to file (unencrypted on disk)
@@ -516,15 +419,13 @@ def edit_file(file_id):
             except Exception as e:
                 flash(f'Error saving file: {str(e)}', 'danger')
 
-    if file.filetype == '.pdf':
-        pass
-    if file.filetype == '.doc' or file.filetype == '.docx':
+    if file.file_type == '.doc' or file.file_type == '.docx':
         pass
 
     return render_template('edit_file.html', file=file, file_id=file_id)
 
 @main.route('/delete_file/<int:file_id>', methods=['GET', 'POST'])
-def delete_file(file_id):
+def delete_file(file_id): # COMPLETED
     user_id = session.get('user_id')
     file = File.query.get(file_id)
     recycle_entry = RecycleBin.query.filter_by(file_id=file_id).first()
@@ -550,7 +451,7 @@ def delete_file(file_id):
     return redirect(url_for('main.view_files'))
     
 @main.route('/recycle', methods=['POST'])
-def recycle():
+def recycle(): # COMPLETED
     user_id = session.get('user_id')
 
     if not user_id:
@@ -599,7 +500,7 @@ def recycle():
     return redirect(url_for('main.view_files'))
 
 @main.route('/restore/<int:file_id>', methods=['GET'])
-def restore_file(file_id):
+def restore_file(file_id): # COMPLETED
     user_id = session.get('user_id')
     file = File.query.get(file_id)
     if file:
@@ -624,7 +525,7 @@ def restore_file(file_id):
     return redirect(url_for('main.view_files'))
 
 @main.route('/view_recycle_bin', methods=['GET'])
-def view_recycle_bin():
+def view_recycle_bin(): # COMPLETED
     user_id = session.get('user_id')
     if not user_id:
         return redirect(url_for('auth.login'))
@@ -702,9 +603,9 @@ def upload():
                     return '.' + filename.rsplit('.', 1)[1].lower()
                 return ''
             
-            filetype = get_file_extension(original_filename)
+            file_type = get_file_extension(original_filename)
 
-            if filetype not in ALLOWED_FILE_EXTENSIONS:
+            if file_type not in ALLOWED_FILE_EXTENSIONS:
                 flash('File type not allowed. Please upload a valid file.', 'danger')
                 return render_template('uploadfile.html', shared_with=shared_with, description=description)
             
@@ -742,19 +643,23 @@ def upload():
             encrypted_file_data, returned_key = encrypt_file_data(raw_file_data, key_string)  # Encrypt file data
 
             #Saving to temporary folder
-            user_folder = get_user_folders('uploads', user_id)
-            upload_path = os.path.join(user_folder, unique_filename)
+            temp_folder = get_user_folders('temp', user_id)
+            temp_path = os.path.join(temp_folder, unique_filename)
             file.seek(0)
-            file.save(upload_path)
+            file.save(temp_path)
+            
+            temp_file_key = generate_file_key()
 
             new_file = File(
                 user_id=user_id,
                 filename=unique_filename,
                 original_filename=original_filename,
-                filetype=filetype,
+                file_type=file_type,
                 file_size=file_size,  # Placeholder for file size
-                fileData=encrypted_file_data,  # Store encrypted data
-                key=returned_key,  # Generate and store encryption key
+                file_data=encrypted_file_data,  # Store encrypted data
+                encryption_key=returned_key,  # Generate and store encryption key
+                key = temp_file_key, # Key for File editing purposes
+                file_reference_key = 'NULL',
                 description=description,
                 shared_with=shared_with,
                 status='pending',
@@ -764,14 +669,13 @@ def upload():
             db.session.add(new_file)
             db.session.flush()  # Get new_file.file_id before commit
 
-            user_serve_folder = get_user_folders('serve', user_id)
-            serve_filepath = os.path.join(user_serve_folder, unique_filename)
+            new_file.file_key = generate_file_key(new_file.file_id)
 
             user_uploads_folder = get_user_folders('uploads', user_id)
             upload_filepath = os.path.join(user_uploads_folder, unique_filename)
 
             # Add watermark if file is a pdf
-            if filetype == '.pdf':
+            if file_type == '.pdf':
                 user_id = session.get('user_id')
                 username = session.get('username')
 
@@ -779,8 +683,8 @@ def upload():
                 view_time = datetime.utcnow().isoformat()
                 watermark_text= f"User: {username}, IP: {ip_address}, Time: {view_time}",
                 insertion_point = pymupdf.Point(-100, -100)
-                embed_text_in_pdf(upload_path, serve_filepath, watermark_text, insertion_point)
-                with open(serve_filepath, 'rb') as f:
+                embed_text_in_pdf(temp_path, upload_filepath, watermark_text, insertion_point)
+                with open(upload_filepath, 'rb') as f:
                     content = f.read()
                 hash = generate_hmac_hash(content)
                 print(hash)
@@ -794,32 +698,21 @@ def upload():
                 )
                 db.session.add(hash)
 
-            elif filetype in ['.doc', '.docx']:
-                print(f"Saving original Word document to: {upload_filepath}")
-                file.seek(0)  # Reset file pointer to beginning
+            elif file_type in ['.doc', '.docx']:
+                file.seek(0)
                 file.save(upload_filepath)
 
-                if os.path.exists(upload_filepath) and os.path.getsize(upload_filepath) > 0:
-                    print(f"✓ File saved successfully. Size: {os.path.getsize(upload_filepath)} bytes")
-                
-                    try:
-                        pdf_output = os.path.splitext(upload_filepath)[0] + '.pdf'
-                        print(f"DEBUG: Attempting to convert to PDF: {pdf_output}")
+                with open(upload_filepath, 'rb') as f:
+                    content = f.read()
+                hash = generate_hmac_hash(content)
+                print(hash)
 
-                        converted_file = convert_doc_to_pdf(pdf_output, upload_filepath, serve_filepath)
-                        if converted_file:
-                            print(f"✓ PDF preview created: {converted_file}")
-                    except Exception as e:
-                        print(f"PDF conversion skipped: {e}")
-                else:
-                    print(f"✗ ERROR: File not saved properly!")
-                    raise Exception("Failed to save file to disk")
 
-            elif filetype == '.txt':
+            elif file_type == '.txt':
                 file.seek(0)
-                file.save(serve_filepath)
+                file.save(upload_filepath)
 
-                with open(serve_filepath, 'rb') as f:
+                with open(upload_filepath, 'rb') as f:
                     content = f.read()
                 hash = generate_hmac_hash(content)
                 print(hash)
@@ -1039,7 +932,7 @@ def logout():
     flash('You have been logged out.', 'info')
     return redirect(url_for('auth.login'))
 
-def auditlog(user_id, action_type, details='', status='success'):
+def auditlog(user_id, action_type, details='', status='success'): #For Audit Logging
     """Helper function to log audit events"""
     try:
         log_entry = AuditLog(
@@ -1056,7 +949,7 @@ def auditlog(user_id, action_type, details='', status='success'):
         db.session.rollback()
 
 @main.route('/view_audit_logs')
-def view_audit_logs():
+def view_audit_logs(): #Admin Function
     if not session.get('is_admin'):
         flash('You do not have permission to view audit logs.', 'danger')
 
@@ -1115,7 +1008,7 @@ def view_audit_logs():
         filter_params=filter_params)
 
 @main.route('/manage_users')
-def manage_users():
+def manage_users(): #Admin Function
     if request.method == 'GET':
         if not session.get('is_admin'):
             flash('You do not have permission to manage users.', 'danger')
@@ -1134,7 +1027,7 @@ def manage_users():
 
     return render_template('manage_users.html', users=users)
 
-def get_system_info():
+def get_system_info(): # For watermarking
     """Get client's IP address for logging purposes"""
     ip_address = request.remote_addr
     return ip_address
@@ -1168,3 +1061,243 @@ def embed_text_in_pdf(input_path, output_path, text, point):
     page.insert_text(point, text, fontsize=12, color=(0, 0, 0, 0.5)) 
     file.save(output_path)
     file.close()
+
+def generate_file_key(file_id=None):
+    if file_id:
+        return f"file_{file_id}_{secrets.token_hex(16)}"
+    return secrets.token_urlsafe(32)
+
+# def generate_jwt_token():
+#     jwt_editor = jwt.encode(editor_config, JWT_SECRET, algorithm="HS256")
+#     editor_config["token"] = jwt_editor
+#     pass
+
+# @main.route('/api/callback_handler', methods=['POST'])
+# def api_callback_handler():
+#     status = doc.get(status)
+#     pass
+
+ # The document editing service informs the document storage service about 
+ # the status of the document editing using the callbackUrl from JavaScript API. 
+ # The document editing service uses the POST request with the information in body.
+
+def config():
+    pass
+
+@main.route('/edit/<int:file_id>')
+def edit(file_id):
+    user_id = session.get('user_id')
+    username = session.get('username')
+    file = File.query.get(file_id)
+    original_filename = file.original_filename
+    #Generate unique doc key
+    doc_key = str(uuid.uuid4())
+
+    if 'doc_key_mappings' not in session:
+        session['doc_key_mappings'] = {}  # Create the dictionary
+    session['doc_key_mappings'][doc_key] = file_id  # Create Dictionary to store doc_key and file_id pairs
+
+    edit = Edit(
+        file_id = file_id,
+        user_id = user_id,
+        doc_key = doc_key
+    )
+    db.session.add(edit)
+    db.session.commit()
+
+    user_token = jwt.encode({"user_id": user_id}, JWT_SECRET, algorithm="HS256")
+    if isinstance(user_token, bytes):
+        user_token = user_token.decode('utf-8')
+
+    # doc_url = f'http://host.docker.internal:5001/api/online/{file_id}?token={user_token}'
+    # callback_url = f'http://host.docker.internal:5001/api/callback/{doc_key}'
+
+    doc_url = f'http://192.168.50.242:5001/api/online/{file_id}?token={user_token}'
+    callback_url = f'http://192.168.50.242:5001/api/callback/{doc_key}'
+
+    current_user = {
+        "id": str(user_id),
+        "name": str(username)
+    }
+
+    editor_config = {
+        "document": {
+            "fileType": original_filename.split('.')[-1],
+            "key": doc_key,
+            "title": original_filename,
+            "url": doc_url,
+            "permissions": {
+                "edit": True,
+                "download": False,
+                "print": False
+            }
+        },
+        "documentType": 'word',
+        "editorConfig": {
+            "user": current_user,
+            "callbackUrl": str(callback_url),
+            "mode": "edit"
+        }
+    }
+
+    # Generate and send a real token upon every edit
+    jwt_editor = jwt.encode(editor_config, JWT_SECRET, algorithm="HS256")
+    if isinstance(jwt_editor, bytes):
+        jwt_editor = jwt_editor.decode('utf-8')
+    editor_config["token"] = jwt_editor
+
+    # Debug prints
+    print(f"=== EDIT ROUTE DEBUG ===")
+    print(f"File ID: {file_id}")
+    print(f"Doc Key: {doc_key}")
+    print(f"Document URL: {doc_url}")
+    print(f"Callback URL: {callback_url}")
+    
+    return render_template('edit.html', 
+                         editor_config=editor_config,
+                         onlyoffice_url=ONLYOFFICE_URL)
+
+@main.route('/api/online/<int:file_id>')
+def serve_onlinedoc(file_id):
+    user_id = None
+    
+    token = request.args.get('token')
+    if token:
+        try:
+            decode = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+            user_id = decode.get('user_id')
+            print(f'User ID from token: {user_id}')
+
+        except Exception as e:
+            print(f"token {token} not found")
+            # return jsonify({"error": "Unauthorized"}), 401
+    
+    # If no token, try session
+    if not token:
+        user_id = session.get('user_id')
+        print(f"User ID from session: {user_id}")
+    
+    if not user_id:
+        print("No user ID found")
+        return jsonify({'error': 'You are Unauthorized'}), 401
+    
+    file = File.query.get(file_id)
+    
+    if not file:
+        return jsonify({"error": "File not found"}), 404
+    
+    if file.user_id != user_id:
+        shared = ShareFile.query.filter_by(file_id=file_id, shared_with_user_id=user_id).first()
+        if not shared:
+            return jsonify({"error": "Access denied"}), 403
+        
+    #Get user folders
+    user_folder = get_user_folders('uploads', user_id)
+    filepath = os.path.join(user_folder, file.filename)
+
+    if not os.path.exists(filepath):
+        return jsonify({"error: File not found"}), 404
+    
+    #Open and decrypt file
+    with open(filepath, 'rb') as f:
+        file_content = f.read()
+
+    # if file.file_type == '.doc':
+    #     decrypted_file = encrypted_file.decode('utf-8') # Decode the file in utf-8 format
+    #     response = make_response(decrypted_file)
+
+    # elif file.file_type == '.docx':
+    #     decrypted_bytes = decrypt_file_data(encrypted_file, file.encryption_key) # Decrypt into raw bytes
+    #     response = make_response(decrypted_bytes)
+    response = make_response(file_content)
+    
+    extension = file.original_filename.split('.')[-1].lower()
+
+    filetypes = {
+            'txt': 'text/plain',
+            'pdf': 'application/pdf',
+            'doc': 'application/msword',
+            'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'xls': 'application/vnd.ms-excel',
+            'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        }
+    response.headers['Content-Type'] = filetypes.get(extension, 'application/octet-stream')
+    response.headers['Content-Disposition'] = f'inline; filename="{file.original_filename}"'
+
+    return response
+
+@main.route('/api/callback/<string:doc_key>', methods=['POST'])
+def api_callback(doc_key):
+    """Handle save callbacks from ONLYOFFICE"""
+
+    edit_session = Edit.query.filter_by(doc_key=doc_key).first()
+    print(f'doc_key: {doc_key}')
+
+    if edit_session:
+        file_id = edit_session.file_id
+        user_id = edit_session.user_id
+        print(f"Found in database - File ID: {file_id}, User ID: {user_id}")
+    
+    else:
+        file_id = session.get('doc_key_mappings', {}).get(doc_key)
+        if file_id:
+            print(f"✅ Found in session - File ID: {file_id}")
+        else:
+            print(f"❌ No file_id found for doc_key: {doc_key}")
+            # Return 200 to prevent ONLYOFFICE from retrying
+            return jsonify({"error": 0}), 200
+
+    file = File.query.get(file_id)
+    filename = file.filename
+    file_data = file.file_data
+
+    if not file:
+        print(f'file not found on server')
+        return jsonify({"error": 0}), 200
+        
+    data = request.json
+    status = data.get('status')
+
+    if status == 2 or status == 6 or status == 7:
+        document_url = data.get('url')
+        
+        if document_url:
+            try:
+                # 1. Get the updated doc from onlyoffice
+                response = requests.get(document_url, timeout=30)
+                
+                if response.status_code == 200:
+                    updated_content = response.content
+                    print(f"Downloaded {len(updated_content)} bytes")
+
+                    # Save file: encrypt file, then update db, then update physical storage place
+
+                    encrypted_content = encrypt_file_data(updated_content)
+
+                    #Update file_data in database
+                    file.file_data = encrypted_content
+
+                    #Update physical storage space
+                    user_folder = get_user_folders('uploads', user_id)
+                    filepath = os.path.join(user_folder, filename)
+                    with open(filepath, 'wb') as f:
+                        f.write(encrypted_content)
+                    
+                    db.session.commit()
+                    print(f'File {filename} updated successfully!')
+                    return jsonify({'error': 0})
+                
+            except Exception as e:
+                flash('Error downloading file')
+                return jsonify({"error": 1}), 500  # ← This is correct
+    return jsonify({"error": 0}), 200  
+
+@main.route('/api/callback/test', methods=['GET', 'POST'])
+def test_callback():
+    print("=== TEST CALLBACK HIT ===")
+    print(f"Method: {request.method}")
+    if request.method == 'POST':
+        print(f"Headers: {dict(request.headers)}")
+        print(f"Data: {request.json}")
+    return jsonify({"error": 0}), 200
+
