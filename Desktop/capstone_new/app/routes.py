@@ -19,7 +19,7 @@ import requests
 import uuid # Universally Unique Identifiers
 import jwt # Used in Docker
 import secrets # Used for jwt
-# from groupdocs.viewer import Viewer
+import pikepdf
 
 ALLOWED_FILE_EXTENSIONS = ['.txt', '.pdf', '.doc', '.docx', '.xls', '.xlsx']
 ONLYOFFICE_URL = 'http://localhost:8080' # OnlyOffice API configuration
@@ -643,10 +643,10 @@ def upload():
             encrypted_file_data, returned_key = encrypt_file_data(raw_file_data, key_string)  # Encrypt file data
 
             #Saving to temporary folder
-            temp_folder = get_user_folders('temp', user_id)
-            temp_path = os.path.join(temp_folder, unique_filename)
+            user_uploads_folder = get_user_folders('uploads', user_id)
+            upload_filepath = os.path.join(user_uploads_folder, unique_filename)
             file.seek(0)
-            file.save(temp_path)
+            file.save(upload_filepath)
             
             temp_file_key = generate_file_key()
 
@@ -671,8 +671,8 @@ def upload():
 
             new_file.file_key = generate_file_key(new_file.file_id)
 
-            user_uploads_folder = get_user_folders('uploads', user_id)
-            upload_filepath = os.path.join(user_uploads_folder, unique_filename)
+            temp_folder = get_user_folders('temp', user_id)
+            temp_path = os.path.join(temp_folder, unique_filename)
 
             # Add watermark if file is a pdf
             if file_type == '.pdf':
@@ -683,7 +683,10 @@ def upload():
                 view_time = datetime.utcnow().isoformat()
                 watermark_text= f"User: {username}, IP: {ip_address}, Time: {view_time}",
                 insertion_point = pymupdf.Point(-100, -100)
-                embed_text_in_pdf(temp_path, upload_filepath, watermark_text, insertion_point)
+                os.rename(upload_filepath, temp_path)
+                embed_text_in_pdf(username, temp_path, upload_filepath, watermark_text, insertion_point, view_time)
+                os.remove(temp_path)
+
                 with open(upload_filepath, 'rb') as f:
                     content = f.read()
                 hash = generate_hmac_hash(content)
@@ -1054,7 +1057,7 @@ def change_settings():
             db.session.commit()
             flash('Password changed successfully.', 'success')
 
-def embed_text_in_pdf(input_path, output_path, text, point):
+def embed_text_in_pdf(username, input_path, output_path, text, point, watermark_time):
     file = pymupdf.open(input_path)
     page = file[0]
 
@@ -1062,27 +1065,32 @@ def embed_text_in_pdf(input_path, output_path, text, point):
     file.save(output_path)
     file.close()
 
+    pdf = pikepdf.open(input_path)
+    watermark_time = datetime.utcnow.isoformat()
+
+    # Add custom metadata
+    metadata = pdf.docinfo or {}
+    metadata.update({
+        '/CustomWatermarkUser': username,
+        '/CustomWatermarkTime': watermark_time,
+        '/CustomWatermarkText': text,
+        '/CustomWatermarkedDate': watermark_time,
+        '/CustomDocumentStatus': 'Watermarked',
+        '/CustomWatermarkTool': 'Document Management System v1.0'
+    })
+    
+    pdf.docinfo = metadata
+
+    pdf.save(output_path)
+    pdf.close()
+    
+
 def generate_file_key(file_id=None):
     if file_id:
         return f"file_{file_id}_{secrets.token_hex(16)}"
     return secrets.token_urlsafe(32)
 
-# def generate_jwt_token():
-#     jwt_editor = jwt.encode(editor_config, JWT_SECRET, algorithm="HS256")
-#     editor_config["token"] = jwt_editor
-#     pass
 
-# @main.route('/api/callback_handler', methods=['POST'])
-# def api_callback_handler():
-#     status = doc.get(status)
-#     pass
-
- # The document editing service informs the document storage service about 
- # the status of the document editing using the callbackUrl from JavaScript API. 
- # The document editing service uses the POST request with the information in body.
-
-def config():
-    pass
 
 @main.route('/edit/<int:file_id>')
 def edit(file_id):
@@ -1152,6 +1160,12 @@ def edit(file_id):
     print(f"Doc Key: {doc_key}")
     print(f"Document URL: {doc_url}")
     print(f"Callback URL: {callback_url}")
+
+    log = auditlog(
+        user_id=session['user_id'],
+        action_type='login',
+        details='Successful login attempt'
+    )
     
     return render_template('edit.html', 
                          editor_config=editor_config,
@@ -1192,7 +1206,7 @@ def serve_onlinedoc(file_id):
             return jsonify({"error": "Access denied"}), 403
         
     #Get user folders
-    user_folder = get_user_folders('uploads', user_id)
+    user_folder = get_user_folders('uploads', file.user_id)
     filepath = os.path.join(user_folder, file.filename)
 
     if not os.path.exists(filepath):
@@ -1202,13 +1216,6 @@ def serve_onlinedoc(file_id):
     with open(filepath, 'rb') as f:
         file_content = f.read()
 
-    # if file.file_type == '.doc':
-    #     decrypted_file = encrypted_file.decode('utf-8') # Decode the file in utf-8 format
-    #     response = make_response(decrypted_file)
-
-    # elif file.file_type == '.docx':
-    #     decrypted_bytes = decrypt_file_data(encrypted_file, file.encryption_key) # Decrypt into raw bytes
-    #     response = make_response(decrypted_bytes)
     response = make_response(file_content)
     
     extension = file.original_filename.split('.')[-1].lower()
@@ -1271,17 +1278,16 @@ def api_callback(doc_key):
                     print(f"Downloaded {len(updated_content)} bytes")
 
                     # Save file: encrypt file, then update db, then update physical storage place
+                    encrypted_content, encryption_key = encrypt_file_data(updated_content, file.encryption_key)
 
-                    encrypted_content = encrypt_file_data(updated_content)
-
-                    #Update file_data in database
+                    #Update encrypted file_data in database
                     file.file_data = encrypted_content
 
-                    #Update physical storage space
-                    user_folder = get_user_folders('uploads', user_id)
+                    #Update non-encrypted file to disk
+                    user_folder = get_user_folders('uploads', file.user_id)
                     filepath = os.path.join(user_folder, filename)
                     with open(filepath, 'wb') as f:
-                        f.write(encrypted_content)
+                        f.write(updated_content)
                     
                     db.session.commit()
                     print(f'File {filename} updated successfully!')

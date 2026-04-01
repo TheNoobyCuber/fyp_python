@@ -16,6 +16,7 @@ bcrypt==4.0.1
 # File processing
 python-magic==0.4.27
 pymupdf==1.27.1
+pikepdf==10.5.1
 Pillow==12.1.1
 PyWavelets==1.9.0
 groupdocs-viewer-net==25.12

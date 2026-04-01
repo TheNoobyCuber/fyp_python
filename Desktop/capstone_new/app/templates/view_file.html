@@ -50,6 +50,16 @@
                     background: #f5f5f5; padding: 15px; border-radius: 5px;">
                     {{ content }}</pre>
                 </div>
+                <a href="{{ url_for('main.edit_file', file_id=file.file_id) }}" 
+                    class="btn btn-secondary bi bi-pencil"> Edit</a>
+                <a href="{{ url_for('main.edit', file_id=file.file_id) }}" 
+                    class="btn btn-success bi bi-share"> Share</a>
+                <form action="{{ url_for('main.recycle', file_id=file.file_id) }}" method="POST" class="d-inline">
+                    <button type="submit" class="btn btn-danger bi bi-trash" 
+                        onclick="return confirm('Are you sure you want to move this file to the recycle bin?')"> Move to Recycle Bin</button>
+                </form>
+                <a href='{{ url_for("main.index") }}'><button type='button' class='btn btn-primary'>Back to Dashboard</button></a>
+
                 {% elif file.file_type == '.pdf' %}
                 <hr>
                 <h4>File Content:</h4>
@@ -61,8 +71,14 @@
                     height="800px"
                     ></iframe>
                 </div>
-
-                {% elif file.file_type == '.doc' or file.file_type == '.docx' %}
+                <a href="{{ url_for('main.index', file_id=file.file_id) }}" 
+                        class="btn btn-success bi bi-share"> Share</a>
+                    <form action="{{ url_for('main.recycle', file_id=file.file_id) }}" method="POST" class="d-inline">
+                        <button type="submit" class="btn btn-danger bi bi-trash" 
+                        onclick="return confirm('Are you sure you want to move this file to the recycle bin?')"> Move to Recycle Bin</button>
+                    </form>
+                 <a href='{{ url_for("main.index") }}'><button type='button' class='btn btn-primary'>Back to Dashboard</button></a>
+                 {% elif file.file_type == '.doc' or file.file_type == '.docx' %}
                 <hr>
                 <h4>File Content:</h4>
                 <div class="pdf-container mt-3">
@@ -73,21 +89,7 @@
                     height="800px"
                     ></iframe>
                 </div>
-                    {% else %}
-                <p>No preview available for this file type.</p>
-                {% endif %}
-            </div>
-            <div>
-                {% if file.file_type == '.pdf' %}
-                    <a href="{{ url_for('main.edit', file_id=file.file_id) }}" 
-                        class="btn btn-success bi bi-share"> Share</a>
-                    <form action="{{ url_for('main.recycle', file_id=file.file_id) }}" method="POST" class="d-inline">
-                        <button type="submit" class="btn btn-danger bi bi-trash" 
-                        onclick="return confirm('Are you sure you want to move this file to the recycle bin?')"> Move to Recycle Bin</button>
-                    </form>
-                    <a href='{{ url_for("main.index") }}'><button type='button' class='btn btn-primary'>Back to Dashboard</button></a>
-                {% else %}
-                <a href="{{ url_for('main.edit_file', file_id=file.file_id) }}" 
+                <a href="{{ url_for('main.edit', file_id=file.file_id) }}" 
                     class="btn btn-secondary bi bi-pencil"> Edit</a>
                 <a href="{{ url_for('main.edit', file_id=file.file_id) }}" 
                     class="btn btn-success bi bi-share"> Share</a>
@@ -96,6 +98,8 @@
                     onclick="return confirm('Are you sure you want to move this file to the recycle bin?')"> Move to Recycle Bin</button>
                 </form>
                 <a href='{{ url_for("main.index") }}'><button type='button' class='btn btn-primary'>Back to Dashboard</button></a>
+                    {% else %}
+                <p>No preview available for this file type.</p>
                 {% endif %}
             </div>
         </div>
