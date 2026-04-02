@@ -56,10 +56,6 @@ def create_app():
 
     db.init_app(app)
     mail.init_app(app)
-
-    # OnlyOffice API configuration
-    # app.config['ONLYOFFICE_URL'] = 'http://localhost:8080'
-    # app.config['JWT_SECRET'] = 'my_jwt_secret'
     
     # Register the blueprint
     from app.routes import auth ,main  # Must be imported here to avoid circular dependencies

@@ -25,7 +25,6 @@ CREATE TABLE File (
     file_data LONGBLOB NOT NULL,  -- Encrypted file data
     encryption_key VARCHAR(255) NOT NULL,   -- Encryption key
     `key` VARCHAR(128) NOT NULL,  -- Key for Doc editing  
-    file_reference_key VARCHAR(128) NOT NULL,  -- Reference file Key for Doc editing 
     description TEXT,      -- 32-byte random
     shared_with TEXT,   -- 32-byte random
     upload_time DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -48,8 +47,10 @@ CREATE TABLE AuditLog (
 CREATE TABLE ShareFile (
     share_id INT PRIMARY KEY AUTO_INCREMENT,
     file_id INT,
-    shared_with_user_id INT,
-    shared_by_user_id INT,
+    shared_with_user_id INT NOT NULL,
+    shared_with_username VARCHAR(128) NOT NULL,
+    shared_by_user_id INT NOT NULL,
+    shared_by_username VARCHAR(128) NOT NULL,
     shared_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     description TEXT,
     FOREIGN KEY (file_id) REFERENCES `File`(file_id) ON DELETE CASCADE,

@@ -12,14 +12,14 @@ from wtforms import ValidationError
 from .models import AuditLog, File, RecycleBin, ShareFile, User, FileHash, Edit, db
 from datetime import datetime, timedelta
 import random 
-from flask_mail import Mail, Message
+from flask_mail import Message
 import pymupdf
-import subprocess
 import requests
 import uuid # Universally Unique Identifiers
 import jwt # Used in Docker
 import secrets # Used for jwt
-import pikepdf
+import json
+from pikepdf import Pdf, Dictionary
 
 ALLOWED_FILE_EXTENSIONS = ['.txt', '.pdf', '.doc', '.docx', '.xls', '.xlsx']
 ONLYOFFICE_URL = 'http://localhost:8080' # OnlyOffice API configuration
@@ -37,7 +37,8 @@ def generate_salt():
     return os.urandom(16)  # Generate a 128-bit random salt
 
 def generate_hmac_hash(file_content, key=None):
-    key = generate_prng()
+    if key is None:
+        key = generate_prng()
     raw_key = base64.b64decode(key)
     hash_value = hmac.new(raw_key, file_content, hashlib.sha256)
     hex_hash = hash_value.hexdigest()
@@ -184,19 +185,27 @@ def view_files():
     
     current_user = User.query.get(user_id)
     current_user_username = current_user.username
-    files = File.query.filter_by(user_id=user_id).order_by(File.upload_time.desc()).all()
-    shared_files_data = ShareFile.query.filter(ShareFile.shared_with_user_id == user_id).order_by(ShareFile.shared_at.desc()).all()
+    files = File.query.filter_by(user_id=user_id).order_by(File.upload_time.desc()).all() #Get user's OWN files
+    for file in files:
+        file.uploaded_by_username = current_user_username
+
+    shared_files_data = ShareFile.query.filter(ShareFile.shared_with_user_id == user_id).order_by(ShareFile.shared_at.desc()).all() #Get files SHARED to the user
     shared_files = []
     for share in shared_files_data:
         file = File.query.get(share.file_id)
-        if file:
-            shared_files.append(file)
-            
-    for file in files:
-        file.uploaded_by_username = current_user_username
-    for file in shared_files:
-        if file.status != 'recycle_bin':
-            file.uploaded_by_username = User.query.get(file.user_id).username
+        
+        if file and file.status != 'recycle_bin':
+            uploader = User.query.get(file.user_id)
+
+            shared_files.append({
+                'file': file,
+                'shared_by_username': share.shared_by_username,  # From ShareFile
+                'shared_at': share.shared_at,  # From ShareFile
+                'description': share.description,  # From ShareFile
+                'uploaded_by_username': uploader.username if uploader else 'Unknown'
+            })
+
+            print(f'Shared files: {shared_files}')
 
     return render_template('files.html', files=files, shared_files=shared_files)
 
@@ -250,7 +259,7 @@ def view_file(file_id):
 
         username = session.get('username')
         ip_address = get_system_info
-        view_time = datetime.utcnow().isoformat
+        view_time = datetime.utcnow().isoformat()
 
         hash = FileHash(
             user_id = user_id,
@@ -265,13 +274,14 @@ def view_file(file_id):
         return render_template('view_file.html', file=file, file_id=file_id, content=decrypted_content)
     
     elif file.file_type in ['.doc', '.docx', '.pdf']:
-        serve_file(file_id)
+        serve_file(file_id) 
         return render_template('view_file.html', file=file, file_id=file_id)
 
     return render_template('view_file.html', file=file, file_id=file_id, content=raw_data)
 
 @main.route('/serve_file/<int:file_id>', methods=['GET'])
-def serve_file(file_id):
+def serve_file(file_id): 
+    """Used so that the file pops up in a designated space in view_file.html instead of the entire window"""
     user_id = session.get('user_id')
 
     if not user_id:
@@ -298,10 +308,9 @@ def serve_file(file_id):
     if not os.path.exists(file_path):
         flash('File not found on server.', 'danger')
         return redirect(url_for('main.view_files'))
-    
-    serve_folder = get_user_folders('uploads', user_id)
-    temp_filename = f'{file.filename}_serve'
-    temp_path = os.path.join(serve_folder, temp_filename)
+
+    temp_folder = get_user_folders('temp', file.user_id)
+    temp_path = os.path.join(temp_folder, file.filename)
     
     raw_data = decrypt_file_data(file.file_data, file.encryption_key)  # Decrypt file data to ensure key is correct and file is accessible
 
@@ -318,7 +327,7 @@ def serve_file(file_id):
             insertion_point = pymupdf.Point(-100, -100)
 
             embed_text_in_pdf(file_path, temp_path, watermark_text, insertion_point)
-            hash = generate_hmac_hash(raw_data)
+            hash = generate_hmac_hash(raw_data, file.encryption_key)
 
             hash = FileHash(
                 user_id = user_id,
@@ -333,20 +342,8 @@ def serve_file(file_id):
         elif file.file_type in ['.doc', '.docx']: 
             pass
 
-        # elif file.filetype in ['.doc', '.docx']:
-        #     if file.filetype == '.doc':
-        #         file_response.mimetype = 'application/pdf'
-        #     else:
-        #         file_response.mimetype = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-
-        #     file_response.headers['Content-Disposition'] = f'inline; filename="{file.original_filename}"'
-        
-        # file_response.headers['Content-Length'] = len(raw_data)
-        
         return file_response
-        #     return send_from_directory(current_app.config['UPLOAD_FOLDER'], file.filename, as_attachment=False, mimetype='application/pdf')
-        # else:
-        #     return send_from_directory(current_app.config['UPLOAD_FOLDER'], file.filename, as_attachment=True)
+
     except Exception as e:
         print(f"Error serving file: {e}")
         flash(f'Error serving file: {str(e)}', 'danger')
@@ -533,29 +530,43 @@ def view_recycle_bin(): # COMPLETED
     recycle_bin_files = RecycleBin.query.filter_by(deleted_by_user_id=user_id).order_by(RecycleBin.deleted_at.desc()).all()
     return render_template('recycle_bin.html', recycle_bin=recycle_bin_files)
 
-@main.route('/share', methods=['POST'])
-def share_file():
-    file_id = request.form.get('file_id')
+@main.route('/share/<int:file_id>', methods=['GET', 'POST'])
+def share_file(file_id):
     file = File.query.get(file_id)
+    original_filename = file.original_filename
+
+    if not file:
+        flash("File not found.", "danger")
+        return render_template('files.html')
     
-    if file:
+    if file and request.method == 'POST':
         try:
             shared_with = request.form.get('shared_with')
-            shared_with_user = User.query.filter_by(username=shared_with).first() if shared_with else None
-            shared_with_user_id = shared_with_user.id if shared_with_user else None
-            description = request.form.get('description')
+            if not shared_with:
+                flash("Please enter a user to share this file with.")
+                return render_template('files.html')
+            
+            shared_with_user = User.query.filter_by(username=shared_with).first()
+            shared_with_user_id = shared_with_user.id
+            shared_with_username = shared_with_user.username
+
+            shared_by_user_id = session.get('user_id')
+            shared_by_username = session.get('username')
+
             if not shared_with_user_id:
                 flash('User to share with not found.', 'danger')
                 return redirect(url_for('main.view_files'))
             else:
-                file.shared_with_user_id = shared_with_user_id
-                file.shared_by_user_id = session['user_id']
+                shared_with_username = shared_with_user.username
+                description = request.form.get('description')
                 description = description or ''
                 
                 share_file = ShareFile( #Add entry to ShareFile table
                     file_id=file_id,
                     shared_with_user_id=shared_with_user_id,
-                    shared_by_user_id=session['user_id'],
+                    shared_with_username=shared_with_username,
+                    shared_by_user_id=shared_by_user_id,
+                    shared_by_username=shared_by_username,
                     description=description,
                     shared_at=datetime.utcnow()
                 )
@@ -565,7 +576,7 @@ def share_file():
                 log = auditlog( #Log the sharing action
                     user_id=session['user_id'],
                     action_type='share file',
-                    details=f'Shared file ID: {file_id}, filename: {file.original_filename} with users: {shared_with}'
+                    details=f'Shared file ID: {file_id}, filename: {original_filename} with users: {shared_with}'
                 )
                 db.session.add(log)
                 print(f"✓ AuditLog entry added to session")
@@ -573,17 +584,19 @@ def share_file():
                 print(f"Attempting to commit...")
                 db.session.commit()
                 print(f"✓ Session committed successfully.")
-
-                flash(f'File "{file.original_filename}" shared successfully with {shared_with}.', 'success')
-            return redirect(url_for('main.index'))
+                flash(f'File {original_filename} shared with {shared_with_username} successfully!', 'success')
+        
         except Exception as e:
             flash(f'Error sharing file: {str(e)}', 'danger')
             return redirect(url_for('main.index'))
+        
+    return redirect(url_for('main.view_files'))
         
     
 @main.route('/upload', methods=['GET', 'POST'])
 def upload():
     user_id = session.get('user_id')
+    username = session.get('username')
     try:   
         if request.method == 'POST':
             file = request.files['file']
@@ -621,11 +634,11 @@ def upload():
             print(f"DEBUG - unique filename: {unique_filename}")
 
             #Read file data and encrypt
-            key_string = generate_prng()  # Generate encryption key
+            encryption_key = generate_prng()  # Generate encryption key
             raw_file_data = file.read()
             file_size = len(raw_file_data)  # Get file size in bytes
 
-            if file_size > 50 * 1024 * 1024:  # 16 MB limit
+            if file_size > 50 * 1024 * 1024:  # 50 MB limit
                 flash('File size exceeds the 50 MB limit. Please upload a smaller file.', 'danger')
                 os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
                 
@@ -640,7 +653,7 @@ def upload():
                 return render_template('uploadfile.html', shared_with=shared_with, 
                                        description=description)
 
-            encrypted_file_data, returned_key = encrypt_file_data(raw_file_data, key_string)  # Encrypt file data
+            encrypted_file_data, encryption_key = encrypt_file_data(raw_file_data, encryption_key)  # Encrypt file data
 
             #Saving to temporary folder
             user_uploads_folder = get_user_folders('uploads', user_id)
@@ -648,7 +661,7 @@ def upload():
             file.seek(0)
             file.save(upload_filepath)
             
-            temp_file_key = generate_file_key()
+            file_key = generate_file_key()
 
             new_file = File(
                 user_id=user_id,
@@ -657,9 +670,8 @@ def upload():
                 file_type=file_type,
                 file_size=file_size,  # Placeholder for file size
                 file_data=encrypted_file_data,  # Store encrypted data
-                encryption_key=returned_key,  # Generate and store encryption key
-                key = temp_file_key, # Key for File editing purposes
-                file_reference_key = 'NULL',
+                encryption_key=encryption_key,  # Generate and store encryption key
+                key=file_key, # Key for File editing purposes
                 description=description,
                 shared_with=shared_with,
                 status='pending',
@@ -668,8 +680,6 @@ def upload():
             )
             db.session.add(new_file)
             db.session.flush()  # Get new_file.file_id before commit
-
-            new_file.file_key = generate_file_key(new_file.file_id)
 
             temp_folder = get_user_folders('temp', user_id)
             temp_path = os.path.join(temp_folder, unique_filename)
@@ -684,8 +694,14 @@ def upload():
                 watermark_text= f"User: {username}, IP: {ip_address}, Time: {view_time}",
                 insertion_point = pymupdf.Point(-100, -100)
                 os.rename(upload_filepath, temp_path)
-                embed_text_in_pdf(username, temp_path, upload_filepath, watermark_text, insertion_point, view_time)
-                os.remove(temp_path)
+                # add invisible text watermark 
+                embed_text_in_pdf(temp_path, upload_filepath, watermark_text, insertion_point)
+                # add metadata to watermarked file + save back to uploads folder
+                embed_metadata(username, temp_path, upload_filepath, watermark_text, view_time)
+    
+                # Clean up temp file
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
 
                 with open(upload_filepath, 'rb') as f:
                     content = f.read()
@@ -701,20 +717,7 @@ def upload():
                 )
                 db.session.add(hash)
 
-            elif file_type in ['.doc', '.docx']:
-                file.seek(0)
-                file.save(upload_filepath)
-
-                with open(upload_filepath, 'rb') as f:
-                    content = f.read()
-                hash = generate_hmac_hash(content)
-                print(hash)
-
-
-            elif file_type == '.txt':
-                file.seek(0)
-                file.save(upload_filepath)
-
+            elif file_type in ['.doc', '.docx', '.txt']:
                 with open(upload_filepath, 'rb') as f:
                     content = f.read()
                 hash = generate_hmac_hash(content)
@@ -723,7 +726,9 @@ def upload():
             share_file = ShareFile( #Add entry to ShareFile table
                 file_id=new_file.file_id,
                 shared_with_user_id=shared_with_user_id,
-                shared_by_user_id=session['user_id'],
+                shared_with_username=shared_with_user,
+                shared_by_user_id=user_id,
+                shared_by_username=username,
                 description=description,
                 shared_at=datetime.utcnow()
             )
@@ -766,7 +771,6 @@ def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        #remember = request.form.get('remember')
         
         if not username:
             flash('Please enter your username', 'danger')
@@ -1057,7 +1061,7 @@ def change_settings():
             db.session.commit()
             flash('Password changed successfully.', 'success')
 
-def embed_text_in_pdf(username, input_path, output_path, text, point, watermark_time):
+def embed_text_in_pdf(input_path, output_path, text, point):
     file = pymupdf.open(input_path)
     page = file[0]
 
@@ -1065,25 +1069,26 @@ def embed_text_in_pdf(username, input_path, output_path, text, point, watermark_
     file.save(output_path)
     file.close()
 
-    pdf = pikepdf.open(input_path)
-    watermark_time = datetime.utcnow.isoformat()
+def embed_metadata(username, input_path, output_path, text, watermark_time):
+    ip_address = get_system_info()
 
-    # Add custom metadata
-    metadata = pdf.docinfo or {}
-    metadata.update({
-        '/CustomWatermarkUser': username,
-        '/CustomWatermarkTime': watermark_time,
-        '/CustomWatermarkText': text,
-        '/CustomWatermarkedDate': watermark_time,
-        '/CustomDocumentStatus': 'Watermarked',
-        '/CustomWatermarkTool': 'Document Management System v1.0'
-    })
-    
-    pdf.docinfo = metadata
+    watermark = {
+        'username': username,
+        'ip_address': ip_address,
+        'watermark_time': watermark_time,
+        'watermark_text': text
+    }
+    watermark_json = json.dumps(watermark)
+    watermark_b64 = base64.b64encode(watermark_json.encode()).decode()  # Encode watermark text to base64 to ensure it can be safely embedded
 
-    pdf.save(output_path)
-    pdf.close()
-    
+    with Pdf.open(input_path, allow_overwriting_input=True) as file:
+        if file.Root is None:
+            file.Root = Dictionary()
+        if file.docinfo is None:
+            file.docinfo = Dictionary()
+        file.docinfo['/Watermark'] = watermark_b64  # Store the watermark in PDF metadata (invisible to users but can be extracted later)
+        file.docinfo['/WatermarkJSON'] = watermark_json
+        file.save(output_path)  # Save changes to new file
 
 def generate_file_key(file_id=None):
     if file_id:
@@ -1111,6 +1116,12 @@ def edit(file_id):
         doc_key = doc_key
     )
     db.session.add(edit)
+    log = auditlog(
+        user_id=session['user_id'],
+        action_type='edit file',
+        details=f'Opened OnlyOffice editor for editing file ID: {file_id}, filename: {original_filename}'
+    )
+    db.session.add(log)
     db.session.commit()
 
     user_token = jwt.encode({"user_id": user_id}, JWT_SECRET, algorithm="HS256")
@@ -1161,12 +1172,6 @@ def edit(file_id):
     print(f"Document URL: {doc_url}")
     print(f"Callback URL: {callback_url}")
 
-    log = auditlog(
-        user_id=session['user_id'],
-        action_type='login',
-        details='Successful login attempt'
-    )
-    
     return render_template('edit.html', 
                          editor_config=editor_config,
                          onlyoffice_url=ONLYOFFICE_URL)
@@ -1212,7 +1217,7 @@ def serve_onlinedoc(file_id):
     if not os.path.exists(filepath):
         return jsonify({"error: File not found"}), 404
     
-    #Open and decrypt file
+    #Open file
     with open(filepath, 'rb') as f:
         file_content = f.read()
 
@@ -1282,6 +1287,7 @@ def api_callback(doc_key):
 
                     #Update encrypted file_data in database
                     file.file_data = encrypted_content
+                    file.encryption_key = encryption_key
 
                     #Update non-encrypted file to disk
                     user_folder = get_user_folders('uploads', file.user_id)
@@ -1297,13 +1303,3 @@ def api_callback(doc_key):
                 flash('Error downloading file')
                 return jsonify({"error": 1}), 500  # ← This is correct
     return jsonify({"error": 0}), 200  
-
-@main.route('/api/callback/test', methods=['GET', 'POST'])
-def test_callback():
-    print("=== TEST CALLBACK HIT ===")
-    print(f"Method: {request.method}")
-    if request.method == 'POST':
-        print(f"Headers: {dict(request.headers)}")
-        print(f"Data: {request.json}")
-    return jsonify({"error": 0}), 200
-

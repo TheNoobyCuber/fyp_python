@@ -43,58 +43,67 @@
                     <tbody>
                         {% for file in files %}
                             {% if file.status != 'recycle_bin' %}
-                                {% if file.file_type == '.pdf' %}
-                                    <tr>
-                                        <td>{{ file.file_id }}</td>
-                                        <td>{{ file.original_filename }}</td>
-                                        <td>{{ file.uploaded_by_username }}</td>
-                                        <td>{{ file.upload_time }}</td>
+                            <tr>
+                                <td>{{ file.file_id }}</td>
+                                <td>{{ file.original_filename }}</td>
+                                <td>{{ file.uploaded_by_username }}</td>
+                                <td>{{ file.upload_time }}</td>
+                                {% if file.file_type == '.pdf' %}                                    
                                         <td>                            
                                             <a href="{{ url_for('main.view_file', file_id=file.file_id) }}" 
                                                 class="btn btn-primary bi bi-eye"> View</a>
-                                            <a href="{{ url_for('main.share_file', file_id=file.file_id) }}" 
-                                            class="btn btn-success bi bi-share"> Share</a>
                                             <form action="{{ url_for('main.recycle', file_id=file.file_id) }}" method="POST" class="d-inline">
                                                 <button type="submit" class="btn btn-danger bi bi-trash" 
                                                 onclick="return confirm('Are you sure you want to move this file to the recycle bin?')"> Move to Recycle Bin</button>
                                             </form>
                                         </td>
-                                    </tr>
+                                        <td>
+                                            <!-- Form with hidden file_id -->
+                                            <form action="{{ url_for('main.share_file', file_id=file.file_id) }}" method="POST" style="display: inline;">
+                                                <input type="hidden" name="file_id" value="{{ file.file_id }}">
+                                                <input type="text" name="shared_with" placeholder="Username" required>
+                                                <input type="text" name="description" placeholder="Description (optional)">
+                                                <button type="submit" class="btn btn-sm btn-success bi bi-share"> Share</button>
+                                            </form>
+                                        </td>
                                 {% elif file.filetype == '.txt' %}
-                                <tr>
-                                    <td>{{ file.file_id }}</td>
-                                    <td>{{ file.original_filename }}</td>
-                                    <td>{{ file.uploaded_by_username }}</td>
-                                    <td>{{ file.upload_time }}</td>
                                     <td>                            
                                         <a href="{{ url_for('main.view_file', file_id=file.file_id) }}" 
                                             class="btn btn-primary bi bi-eye"> View</a>
                                         <a href="{{ url_for('main.edit_file', file_id=file.file_id) }}" 
                                         class="btn btn-secondary bi bi-pencil"> Edit</a>
-                                        <a href="{{ url_for('main.share_file', file_id=file.file_id) }}" 
-                                        class="btn btn-success bi bi-share"> Share</a>
                                         <form action="{{ url_for('main.recycle', file_id=file.file_id) }}" method="POST" class="d-inline">
                                             <button type="submit" class="btn btn-danger bi bi-trash" 
                                             onclick="return confirm('Are you sure you want to move this file to the recycle bin?')"> Move to Recycle Bin</button>
                                         </form>
                                     </td>
-                                </tr>
+                                    <td>
+                                        <!-- Form with hidden file_id -->
+                                        <form action="{{ url_for('main.share_file', file_id=file.file_id) }}" method="POST" style="display: inline;">
+                                            <input type="hidden" name="file_id" value="{{ file.file_id }}">
+                                            <input type="text" name="shared_with" placeholder="Username" required>
+                                            <input type="text" name="description" placeholder="Description (optional)">
+                                            <button type="submit" class="btn btn-sm btn-success bi bi-share"> Share</button>
+                                        </form>
+                                    </td>
                                 {% else %}
-                                <tr>
-                                    <td>{{ file.file_id }}</td>
-                                    <td>{{ file.original_filename }}</td>
-                                    <td>{{ file.uploaded_by_username }}</td>
-                                    <td>{{ file.upload_time }}</td>
                                     <td>                            
                                         <a href="{{ url_for('main.view_file', file_id=file.file_id) }}" 
                                             class="btn btn-primary bi bi-eye"> View</a>
                                         <a href="{{ url_for('main.edit', file_id=file.file_id) }}" 
                                         class="btn btn-secondary bi bi-pencil"> Edit</a>
-                                        <a href="{{ url_for('main.share_file', file_id=file.file_id) }}" 
-                                        class="btn btn-success bi bi-share"> Share</a>
                                         <form action="{{ url_for('main.recycle', file_id=file.file_id) }}" method="POST" class="d-inline">
                                             <button type="submit" class="btn btn-danger bi bi-trash" 
                                             onclick="return confirm('Are you sure you want to move this file to the recycle bin?')"> Move to Recycle Bin</button>
+                                        </form>
+                                    </td>
+                                    <td>
+                                        <!-- Form with hidden file_id -->
+                                        <form action="{{ url_for('main.share_file', file_id=file.file_id) }}" method="POST" style="display: inline;">
+                                            <input type="hidden" name="file_id" value="{{ file.file_id }}">
+                                            <input type="text" name="shared_with" placeholder="Username" required>
+                                            <input type="text" name="description" placeholder="Description (optional)">
+                                            <button type="submit" class="btn btn-sm btn-success bi bi-share"> Share</button>
                                         </form>
                                     </td>
                                 </tr>
@@ -126,58 +135,49 @@
                     <tr>
                         <th>File ID</th>
                         <th>Filename</th>
-                        <th>Uploaded By</th>
-                        <th>Upload Date</th>
+                        <th>Shared By</th>
+                        <th>Shared Date</th>
+                        <th>Description</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for file in shared_files %}
-                    {% if file.file_type == '.pdf' %}
+                    {% for item in shared_files %}
                     <tr>
-                        <td>{{ file.file_id }}</td>
-                        <td>{{ file.original_filename }}</td>
-                        <td>{{ file.uploaded_by_username }}</td>
-                        <td>{{ file.upload_time }}</td>
+                        <td>{{ item.file.file_id }}</td>
+                        <td>{{ item.file.original_filename }}</td>
+                        <td>{{ item.shared_by_username }}</td>
+                        <td>{{ item.shared_at }}</td>
+                        <td>{{ item.description }}</td>
+                        {% if item.file.file_type == '.pdf' %}
                         <td>                            
-                            <a href="{{ url_for('main.view_file', file_id=file.file_id) }}" 
+                            <a href="{{ url_for('main.view_file', file_id=item.file.file_id) }}" 
                                 class="btn btn-primary bi bi-eye"> View</a>
-                            <a href="{{ url_for('main.share_file', file_id=file.file_id) }}" 
-                            class="btn btn-success bi bi-share"> Share</a>
                         </td>
-                    </tr>
-                    {% elif file.filetype == '.txt' %}
-                    <tr>
-                        <td>{{ file.file_id }}</td>
-                        <td>{{ file.original_filename }}</td>
-                        <td>{{ file.uploaded_by_username }}</td>
-                        <td>{{ file.upload_time }}</td>
+                    {% elif item.file.filetype == '.txt' %}
                         <td>                            
-                            <a href="{{ url_for('main.view_file', file_id=file.file_id) }}" 
+                            <a href="{{ url_for('main.view_file', file_id=item.file.file_id) }}" 
                                 class="btn btn-primary bi bi-eye"> View</a>
-                            <a href="{{ url_for('main.edit_file', file_id=file.file_id) }}" 
+                            <a href="{{ url_for('main.edit_file', file_id=item.file.file_id) }}" 
                             class="btn btn-secondary bi bi-pencil"> Edit</a>
-                            <a href="{{ url_for('main.share_file', file_id=file.file_id) }}" 
-                            class="btn btn-success bi bi-share"> Share</a>
                         </td>
-                    </tr>
                     {% else %}
-                    <tr>
-                        <td>{{ file.file_id }}</td>
-                        <td>{{ file.original_filename }}</td>
-                        <td>{{ file.uploaded_by_username }}</td>
-                        <td>{{ file.upload_time }}</td>
                         <td>                            
-                            <a href="{{ url_for('main.view_file', file_id=file.file_id) }}" 
+                            <a href="{{ url_for('main.view_file', file_id=item.file.file_id) }}" 
                                 class="btn btn-primary bi bi-eye"> View</a>
-                            <a href="{{ url_for('main.edit_file', file_id=file.file_id) }}" 
+                            <a href="{{ url_for('main.edit_file', file_id=item.file.file_id) }}" 
                             class="btn btn-secondary bi bi-pencil"> Edit</a>
-                            <a href="{{ url_for('main.share_file', file_id=file.file_id) }}" 
-                            class="btn btn-success bi bi-share"> Share</a>
-
                         </td>
+                        {% endif %}
+                    <td>
+                        <form action="{{ url_for('main.share_file', file_id=item.file.file_id) }}" method="POST" style="display: inline;">
+                            <input type="hidden" name="file_id" value="{{ item.file.file_id }}">
+                            <input type="text" name="shared_with" placeholder="Username" required>
+                            <input type="text" name="description" placeholder="Description (optional)">
+                            <button type="submit" class="btn btn-sm btn-success bi bi-share"> Share</button>
+                        </form>
+                    </td>                        
                     </tr>
-                    {% endif %}
                     {% endfor %}
                 </tbody>
                 {% else %}

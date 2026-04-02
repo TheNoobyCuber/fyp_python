@@ -39,7 +39,6 @@ class File(db.Model):
     file_data = db.Column(db.LargeBinary, nullable=False)  # Store file data as binary
     encryption_key = db.Column(db.String(255), nullable=False)  # Store encryption key
     key = db.Column(db.String(128), nullable=False)
-    file_reference_key = db.Column(db.String(128), nullable=False)
     description = db.Column(db.Text)
     shared_with = db.Column(db.String(255))
     upload_time = db.Column(db.DateTime, default=datetime.utcnow)
@@ -52,7 +51,9 @@ class ShareFile(db.Model):
     share_id = db.Column(db.Integer, primary_key=True)
     file_id = db.Column(db.Integer, db.ForeignKey('File.file_id'))
     shared_with_user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
+    shared_with_username = db.Column(db.String(128), nullable=False)
     shared_by_user_id = db.Column(db.Integer, db.ForeignKey('User.ID'))
+    shared_by_username = db.Column(db.String(128), nullable=False)
     shared_at = db.Column(db.DateTime, default=datetime.utcnow)
     description = db.Column(db.Text)
 
