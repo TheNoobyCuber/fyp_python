@@ -165,7 +165,7 @@
                         <td>                            
                             <a href="{{ url_for('main.view_file', file_id=item.file.file_id) }}" 
                                 class="btn btn-primary bi bi-eye"> View</a>
-                            <a href="{{ url_for('main.edit_file', file_id=item.file.file_id) }}" 
+                            <a href="{{ url_for('main.edit', file_id=item.file.file_id) }}" 
                             class="btn btn-secondary bi bi-pencil"> Edit</a>
                         </td>
                         {% endif %}

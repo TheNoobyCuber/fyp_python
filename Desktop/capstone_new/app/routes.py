@@ -254,7 +254,7 @@ def view_file(file_id):
         decrypted_content = decrypt_file_data(file.file_data, file.encryption_key).decode('utf-8') # Assuming the original file is UTF-8 encoded text
         with open(file_path, 'rb') as f:
             content = f.read()
-        hash = generate_hmac_hash(content)
+        hash = generate_hmac_hash(content, file.encryption_key)
         print(hash)
 
         username = session.get('username')
@@ -324,7 +324,7 @@ def serve_file(file_id):
             ip_address = get_system_info()
             view_time = datetime.utcnow().isoformat()
             watermark_text= f"User: {username}, IP: {ip_address}, Time: {view_time}"
-            insertion_point = pymupdf.Point(-100, -100)
+            insertion_point = pymupdf.Point(-100, -100) #Outside the file page
 
             embed_text_in_pdf(file_path, temp_path, watermark_text, insertion_point)
             hash = generate_hmac_hash(raw_data, file.encryption_key)
@@ -684,14 +684,12 @@ def upload():
             temp_folder = get_user_folders('temp', user_id)
             temp_path = os.path.join(temp_folder, unique_filename)
 
-            # Add watermark if file is a pdf
-            if file_type == '.pdf':
-                user_id = session.get('user_id')
-                username = session.get('username')
+            ip_address = get_system_info()
+            view_time = datetime.utcnow().isoformat()
+            watermark_text= f"User {username} from IP address {ip_address} uploaded file {unique_filename} with file ID {new_file.file_id} at {view_time}",
 
-                ip_address = get_system_info()
-                view_time = datetime.utcnow().isoformat()
-                watermark_text= f"User: {username}, IP: {ip_address}, Time: {view_time}",
+            # Add watermark if file is a pdf
+            if file_type == '.pdf':                
                 insertion_point = pymupdf.Point(-100, -100)
                 os.rename(upload_filepath, temp_path)
                 # add invisible text watermark 
@@ -708,21 +706,22 @@ def upload():
                 hash = generate_hmac_hash(content)
                 print(hash)
 
-                hash = FileHash(
-                    user_id = user_id,
-                    file_id = new_file.file_id,
-                    watermark_text= watermark_text,
-                    hashValue = hash,
-                    created_at=datetime.utcnow()
-                )
-                db.session.add(hash)
-
             elif file_type in ['.doc', '.docx', '.txt']:
                 with open(upload_filepath, 'rb') as f:
                     content = f.read()
                 hash = generate_hmac_hash(content)
                 print(hash)
 
+
+            hash = FileHash(
+                    user_id = user_id,
+                    file_id = new_file.file_id,
+                    watermark_text= watermark_text,
+                    hashValue = hash,
+                    created_at=datetime.utcnow()
+                )
+            db.session.add(hash)
+            
             share_file = ShareFile( #Add entry to ShareFile table
                 file_id=new_file.file_id,
                 shared_with_user_id=shared_with_user_id,
@@ -1118,8 +1117,8 @@ def edit(file_id):
     db.session.add(edit)
     log = auditlog(
         user_id=session['user_id'],
-        action_type='edit file',
-        details=f'Opened OnlyOffice editor for editing file ID: {file_id}, filename: {original_filename}'
+        action_type='view file',
+        details=f'Opened OnlyOffice editor for file ID: {file_id}, filename: {original_filename}'
     )
     db.session.add(log)
     db.session.commit()
@@ -1220,6 +1219,10 @@ def serve_onlinedoc(file_id):
     #Open file
     with open(filepath, 'rb') as f:
         file_content = f.read()
+    hash = generate_hmac_hash(file_content, file.encryption_key)
+    print(f'Hash value of the doc file is: {hash}')
+
+    
 
     response = make_response(file_content)
     
@@ -1248,20 +1251,16 @@ def api_callback(doc_key):
     if edit_session:
         file_id = edit_session.file_id
         user_id = edit_session.user_id
-        print(f"Found in database - File ID: {file_id}, User ID: {user_id}")
+        # print(f"Found in database - File ID: {file_id}, User ID: {user_id}")
     
     else:
         file_id = session.get('doc_key_mappings', {}).get(doc_key)
-        if file_id:
-            print(f"✅ Found in session - File ID: {file_id}")
-        else:
-            print(f"❌ No file_id found for doc_key: {doc_key}")
+        if not file_id:
             # Return 200 to prevent ONLYOFFICE from retrying
             return jsonify({"error": 0}), 200
 
     file = File.query.get(file_id)
     filename = file.filename
-    file_data = file.file_data
 
     if not file:
         print(f'file not found on server')
@@ -1294,12 +1293,29 @@ def api_callback(doc_key):
                     filepath = os.path.join(user_folder, filename)
                     with open(filepath, 'wb') as f:
                         f.write(updated_content)
+                    hash = generate_hmac_hash(updated_content, file.encryption_key)
                     
+                    hash_db = FileHash(
+                        user_id = user_id,
+                        file_id = file.file_id,
+                        watermark_text= f'file {file.filename} edited by User with ID {user_id} at time {datetime.utcnow().isoformat()}',
+                        hashValue = hash,
+                        created_at=datetime.utcnow()
+                    )
+                    db.session.add(hash_db)
+
+                    log = auditlog(
+                        user_id=user_id,
+                        action_type='edit file',
+                        details=f'Edited document file with file ID: {file_id}, filename: {file.original_filename}'
+                    )
+                    db.session.add(log)
                     db.session.commit()
-                    print(f'File {filename} updated successfully!')
+                    
+                    flash(f'File {filename} updated successfully!', 'success')
                     return jsonify({'error': 0})
                 
             except Exception as e:
                 flash('Error downloading file')
-                return jsonify({"error": 1}), 500  # ← This is correct
+                return jsonify({"error": 1}), 500
     return jsonify({"error": 0}), 200  
