@@ -65,6 +65,12 @@ def decrypt_file_data(encrypted_data, encryption_key):
     decrypted_data = ciphertext.decrypt(encrypted_data)
     return decrypted_data
 
+def get_file_extension(filename):
+    """Extract file extension including the dot"""
+    if '.' in filename:
+        return '.' + filename.rsplit('.', 1)[1].lower()
+    return ''
+
 @auth.route('/send_otp', methods=['POST'])
 def send_otp():
     data = request.get_json()
@@ -239,42 +245,46 @@ def view_file(file_id):
     if file.file_type not in ALLOWED_FILE_EXTENSIONS:
         flash('Cannot display this file type.', 'warning')
         return redirect(url_for('main.view_files'))
-    
+
     key = file.encryption_key
     raw_data = decrypt_file_data(file.file_data, key)  # Decrypt file data to ensure key is correct and file is accessible
-
-    log = auditlog(
-        user_id=session['user_id'],
-        action_type='view file',
-        details=f'Viewed file ID: {file_id}, filename: {file.original_filename}'
-    )
-    db.session.add(log)
     
     if file.file_type == '.txt':
-        decrypted_content = decrypt_file_data(file.file_data, file.encryption_key).decode('utf-8') # Assuming the original file is UTF-8 encoded text
+        decrypted_content = raw_data.decode('utf-8') # Assuming the original file is UTF-8 encoded text
         with open(file_path, 'rb') as f:
             content = f.read()
         hash = generate_hmac_hash(content, file.encryption_key)
         print(hash)
 
         username = session.get('username')
-        ip_address = get_system_info
+        ip_address = get_system_info()
         view_time = datetime.utcnow().isoformat()
 
         hash = FileHash(
             user_id = user_id,
             file_id = file_id,
-            watermark_text = f"User: {username}, IP: {ip_address}, Time: {view_time}",
+            watermark_text = f"User {username} from IP: {ip_address} viewed file {file.filename} at {view_time}",
             hashValue = hash,
             created_at=datetime.utcnow()
         )
         db.session.add(hash)
+        log = auditlog(
+            user_id=session['user_id'],
+            action_type='view file',
+            details=f'Viewed file ID: {file_id}, filename: {file.original_filename}'
+        )
+        db.session.add(log)
         db.session.commit()
-
         return render_template('view_file.html', file=file, file_id=file_id, content=decrypted_content)
     
     elif file.file_type in ['.doc', '.docx', '.pdf']:
-        serve_file(file_id) 
+        log = auditlog(
+            user_id=session['user_id'],
+            action_type='view file',
+            details=f'Viewed file ID: {file_id}, filename: {file.original_filename}'
+        )
+        db.session.add(log)
+        db.session.commit()
         return render_template('view_file.html', file=file, file_id=file_id)
 
     return render_template('view_file.html', file=file, file_id=file_id, content=raw_data)
@@ -323,12 +333,15 @@ def serve_file(file_id):
             username = session.get('username')
             ip_address = get_system_info()
             view_time = datetime.utcnow().isoformat()
-            watermark_text= f"User: {username}, IP: {ip_address}, Time: {view_time}"
+            watermark_text= f"User {username} from IP: {ip_address} viewed file {file.filename} at {view_time}"
             insertion_point = pymupdf.Point(-100, -100) #Outside the file page
-
-            embed_text_in_pdf(file_path, temp_path, watermark_text, insertion_point)
-            hash = generate_hmac_hash(raw_data, file.encryption_key)
-
+            os.rename(file_path, temp_path)
+            embed_text_in_pdf(temp_path, file_path, watermark_text, insertion_point)
+            with open(file_path, 'rb') as f:
+                watermarked_content = f.read()
+            hash = generate_hmac_hash(watermarked_content, file.encryption_key)
+            print(hash)
+            
             hash = FileHash(
                 user_id = user_id,
                 file_id = file_id,
@@ -600,6 +613,7 @@ def upload():
     try:   
         if request.method == 'POST':
             file = request.files['file']
+
             if file.filename == '':
                 flash('No selected file. Please choose a file to upload.', 'danger')
                 return render_template('uploadfile.html')
@@ -609,13 +623,6 @@ def upload():
             shared_with_user_id = shared_with_user.id if shared_with_user else None
 
             original_filename = file.filename
-
-            def get_file_extension(filename):
-                """Extract file extension including the dot"""
-                if '.' in filename:
-                    return '.' + filename.rsplit('.', 1)[1].lower()
-                return ''
-            
             file_type = get_file_extension(original_filename)
 
             if file_type not in ALLOWED_FILE_EXTENSIONS:
@@ -627,20 +634,20 @@ def upload():
                 #os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
                 return render_template('uploadfile.html', shared_with=shared_with, 
                                        description=description)
-            # Create unique filename
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            user_id = session.get('user_id')
-            unique_filename = f"{user_id}_{timestamp}_{original_filename}"
-            print(f"DEBUG - unique filename: {unique_filename}")
+            
+            if not shared_with_user:
+                flash(f'There exists no user with username "{shared_with}". Please try again', 'danger')
+                #os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
+                return render_template('uploadfile.html', shared_with=shared_with, 
+                                       description=description)
 
             #Read file data and encrypt
             encryption_key = generate_prng()  # Generate encryption key
             raw_file_data = file.read()
             file_size = len(raw_file_data)  # Get file size in bytes
 
-            if file_size > 50 * 1024 * 1024:  # 50 MB limit
-                flash('File size exceeds the 50 MB limit. Please upload a smaller file.', 'danger')
-                os.remove(os.path.join(current_app.config['UPLOAD_FOLDER'], unique_filename))
+            if file_size > 30 * 1024 * 1024:  # 30 MB limit
+                flash('File size exceeds the 30 MB limit. Please upload a smaller file.', 'danger')
                 
                 log = auditlog(
                     user_id=session['user_id'],
@@ -653,103 +660,104 @@ def upload():
                 return render_template('uploadfile.html', shared_with=shared_with, 
                                        description=description)
 
-            encrypted_file_data, encryption_key = encrypt_file_data(raw_file_data, encryption_key)  # Encrypt file data
+            else:
+                encrypted_file_data, encryption_key = encrypt_file_data(raw_file_data, encryption_key)  # Encrypt file data
 
-            #Saving to temporary folder
-            user_uploads_folder = get_user_folders('uploads', user_id)
-            upload_filepath = os.path.join(user_uploads_folder, unique_filename)
-            file.seek(0)
-            file.save(upload_filepath)
-            
-            file_key = generate_file_key()
+                # Create unique filename
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                user_id = session.get('user_id')
+                unique_filename = f"{user_id}_{timestamp}_{original_filename}"
 
-            new_file = File(
-                user_id=user_id,
-                filename=unique_filename,
-                original_filename=original_filename,
-                file_type=file_type,
-                file_size=file_size,  # Placeholder for file size
-                file_data=encrypted_file_data,  # Store encrypted data
-                encryption_key=encryption_key,  # Generate and store encryption key
-                key=file_key, # Key for File editing purposes
-                description=description,
-                shared_with=shared_with,
-                status='pending',
-                sensitivity=5,
-                action='no action'
-            )
-            db.session.add(new_file)
-            db.session.flush()  # Get new_file.file_id before commit
+                user_folder = get_user_folders('uploads', user_id)
+                upload_filepath = os.path.join(user_folder, unique_filename)
 
-            temp_folder = get_user_folders('temp', user_id)
-            temp_path = os.path.join(temp_folder, unique_filename)
+                #Saving to uploads folder
+                file.seek(0)
+                file.save(upload_filepath)
+                
+                file_key = generate_file_key()
 
-            ip_address = get_system_info()
-            view_time = datetime.utcnow().isoformat()
-            watermark_text= f"User {username} from IP address {ip_address} uploaded file {unique_filename} with file ID {new_file.file_id} at {view_time}",
-
-            # Add watermark if file is a pdf
-            if file_type == '.pdf':                
-                insertion_point = pymupdf.Point(-100, -100)
-                os.rename(upload_filepath, temp_path)
-                # add invisible text watermark 
-                embed_text_in_pdf(temp_path, upload_filepath, watermark_text, insertion_point)
-                # add metadata to watermarked file + save back to uploads folder
-                embed_metadata(username, temp_path, upload_filepath, watermark_text, view_time)
-    
-                # Clean up temp file
-                if os.path.exists(temp_path):
-                    os.remove(temp_path)
-
-                with open(upload_filepath, 'rb') as f:
-                    content = f.read()
-                hash = generate_hmac_hash(content)
-                print(hash)
-
-            elif file_type in ['.doc', '.docx', '.txt']:
-                with open(upload_filepath, 'rb') as f:
-                    content = f.read()
-                hash = generate_hmac_hash(content)
-                print(hash)
-
-
-            hash = FileHash(
-                    user_id = user_id,
-                    file_id = new_file.file_id,
-                    watermark_text= watermark_text,
-                    hashValue = hash,
-                    created_at=datetime.utcnow()
+                new_file = File(
+                    user_id=user_id,
+                    filename=unique_filename,
+                    original_filename=original_filename,
+                    file_type=file_type,
+                    file_size=file_size,  # Placeholder for file size
+                    file_data=encrypted_file_data,  # Store encrypted data
+                    encryption_key=encryption_key,  # Generate and store encryption key
+                    key=file_key, # Key for File editing purposes
+                    description=description,
+                    shared_with=shared_with,
+                    status='pending',
+                    sensitivity=5,
+                    action='no action'
                 )
-            db.session.add(hash)
-            
-            share_file = ShareFile( #Add entry to ShareFile table
-                file_id=new_file.file_id,
-                shared_with_user_id=shared_with_user_id,
-                shared_with_username=shared_with_user,
-                shared_by_user_id=user_id,
-                shared_by_username=username,
-                description=description,
-                shared_at=datetime.utcnow()
-            )
-            db.session.add(share_file)
+                db.session.add(new_file)
+                db.session.flush()  # Get new_file.file_id before commit
 
-            # Logging the upload event
-            log = auditlog(
-                user_id=session['user_id'],
-                action_type='upload',
-                details='Successful file upload: ' + original_filename
-            )
-            db.session.add(log)
+                temp_folder = get_user_folders('temp', user_id)
+                temp_path = os.path.join(temp_folder, unique_filename)
 
-            log2 = auditlog( #Log the sharing action
-                user_id=session['user_id'],
-                action_type='share file',
-                details=f'Shared file ID: {new_file.file_id}, filename: {original_filename} with users: {shared_with}'
-            )
-            db.session.add(log2)
-            db.session.commit()
-    
-            flash(f'File "{original_filename}" uploaded successfully!', 'success')
+                ip_address = get_system_info()
+                view_time = datetime.utcnow().isoformat()
+                watermark_text= f"User {username} from IP address {ip_address} uploaded file {unique_filename} with file ID {new_file.file_id} at {view_time}",
+
+                # Add watermark if file is a pdf
+                if file_type == '.pdf':                
+                    insertion_point = pymupdf.Point(-100, -100)
+                    os.rename(upload_filepath, temp_path)
+                    # add invisible text watermark 
+                    embed_text_in_pdf(temp_path, upload_filepath, watermark_text, insertion_point)
+                    # add metadata to watermarked file + save back to uploads folder
+                    embed_metadata(username, temp_path, upload_filepath, watermark_text, view_time)
+        
+                    # Clean up temp file
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+
+                # Read file content and generate hash value based on content
+                with open(upload_filepath, 'rb') as f:
+                    content = f.read() 
+                hash = generate_hmac_hash(content)
+                print(hash)
+
+                hash = FileHash( # Add entry to FileHash table
+                        user_id = user_id,
+                        file_id = new_file.file_id,
+                        watermark_text= watermark_text,
+                        hashValue = hash,
+                        created_at=datetime.utcnow()
+                    )
+                db.session.add(hash)
+                
+                share_file = ShareFile( #Add entry to ShareFile table
+                    file_id=new_file.file_id,
+                    shared_with_user_id=shared_with_user_id,
+                    shared_with_username=shared_with_user,
+                    shared_by_user_id=user_id,
+                    shared_by_username=username,
+                    description=description,
+                    shared_at=datetime.utcnow()
+                )
+                db.session.add(share_file)
+
+                # Logging the upload event
+                log = auditlog(
+                    user_id=session['user_id'],
+                    action_type='upload',
+                    details='Successful file upload: ' + original_filename
+                )
+                db.session.add(log)
+
+                log2 = auditlog( #Log the sharing action
+                    user_id=session['user_id'],
+                    action_type='share file',
+                    details=f'Shared file ID: {new_file.file_id}, filename: {original_filename} with users: {shared_with}'
+                )
+                db.session.add(log2)
+                db.session.commit()
+        
+                flash(f'File "{original_filename}" uploaded successfully!', 'success')
             return redirect(url_for('main.index'))
         
     except Exception as e:
@@ -1094,8 +1102,6 @@ def generate_file_key(file_id=None):
         return f"file_{file_id}_{secrets.token_hex(16)}"
     return secrets.token_urlsafe(32)
 
-
-
 @main.route('/edit/<int:file_id>')
 def edit(file_id):
     user_id = session.get('user_id')
@@ -1221,8 +1227,6 @@ def serve_onlinedoc(file_id):
         file_content = f.read()
     hash = generate_hmac_hash(file_content, file.encryption_key)
     print(f'Hash value of the doc file is: {hash}')
-
-    
 
     response = make_response(file_content)
     
