@@ -485,13 +485,6 @@ def recycle(): # COMPLETED
         try:
             os.rename(old_path, new_path)
 
-            log = auditlog(
-                user_id=session['user_id'],
-                action_type='recycle file',
-                details=f'Moved file ID: {file_id}, filename: {file.original_filename} to recycle bin'
-            )
-            db.session.add(log)
-
             new_recycle_entry = RecycleBin(
                 file_id=file.file_id,
                 filename=file.filename,
@@ -499,6 +492,13 @@ def recycle(): # COMPLETED
                 deleted_at=datetime.utcnow()
             )
             db.session.add(new_recycle_entry)
+
+            log = auditlog(
+                user_id=session['user_id'],
+                action_type='recycle file',
+                details=f'Moved file ID: {file_id}, filename: {file.original_filename} to recycle bin'
+            )
+            db.session.add(log)
             db.session.commit()
 
             flash(f'File "{file.filename}" moved to recycle bin.', 'success')
@@ -1021,7 +1021,7 @@ def view_audit_logs(): #Admin Function
         total_pages=total_pages,
         filter_params=filter_params)
 
-@main.route('/manage_users')
+@main.route('/manage_users', methods=['GET'])
 def manage_users(): #Admin Function
     if request.method == 'GET':
         if not session.get('is_admin'):
@@ -1040,6 +1040,53 @@ def manage_users(): #Admin Function
         users = User.query.order_by(User.created_at.desc()).all()
 
     return render_template('manage_users.html', users=users)
+
+@main.route('/delete_user/<int:user_id>', methods=['POST'])
+def delete_user(user_id):
+    if not user_id:
+        flash('You do not have permission to access this page.', 'danger')
+        return redirect(url_for('auth.login'))
+    
+    if not session.get('is_admin'):
+        flash('You do not have permission to delete users.', 'danger')
+        return redirect(url_for('main.dashboard'))
+
+    if user_id == session.get('user_id'):
+        flash('Admin account cnanot be deleted.', 'danger')
+        return redirect(url_for('main.manage_users'))
+
+    else:
+        delete_user = User.query.get(user_id)
+        username = delete_user.username
+
+        try:
+            db.session.delete(delete_user)
+
+            log = auditlog(
+                user_id=session.get('user_id'),
+                action_type='delete user',
+                details=f'Admin deleting user with id {delete_user.id}, username {username}',
+                status='success'
+            )
+            db.session.add(log)
+            db.session.commit()
+
+            flash(f'User "{username}" has been deleted successfully.', 'success')
+            return redirect(url_for('main.manage_users'))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'error deleting user. Please try again', 'warning')
+            log = auditlog(
+                user_id=session.get('user_id'),
+                action_type='delete user',
+                details=f'Failed to delete user with id {user_id}, username {username}',
+                status='failed'
+            )
+            db.session.add(log)
+            db.session.commit()
+
+            return redirect(url_for('main.manage_users'))
 
 def get_system_info(): # For watermarking
     """Get client's IP address for logging purposes"""
